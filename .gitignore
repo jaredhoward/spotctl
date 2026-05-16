@@ -1,0 +1,17 @@
+# Binary
+spotctl
+spotctl-*
+
+# Config with secrets
+spotify.yaml
+config.yaml
+
+# Local environment
+.env
+
+# macOS
+.DS_Store
+
+# Go
+*.test
+*.out
