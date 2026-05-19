@@ -20,9 +20,10 @@ var (
 	shuffle    bool
 )
 
-var runCmd = &cobra.Command{
-	Use:   "run",
-	Short: "Start Spotify playback",
+var playCmd = &cobra.Command{
+	Use:     "play",
+	Aliases: []string{"run"},
+	Short:   "Start Spotify playback",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load(configPath)
 		if err != nil {
@@ -125,12 +126,12 @@ func resolveURI(cmd *cobra.Command, uri, playlistID, trackID, albumID string) (s
 }
 
 func init() {
-	runCmd.Flags().StringVar(&preset, "preset", "", "name of the preset to run")
-	runCmd.Flags().StringVar(&deviceID, "device", "", "Spotify device ID (overrides preset)")
-	runCmd.Flags().StringVar(&uri, "uri", "", "Spotify context URI (e.g. spotify:artist:xxx)")
-	runCmd.Flags().StringVar(&playlistID, "playlist", "", "Spotify playlist ID (convenience for --uri spotify:playlist:ID)")
-	runCmd.Flags().StringVar(&trackID, "track", "", "Spotify track ID (convenience for --uri spotify:track:ID)")
-	runCmd.Flags().StringVar(&albumID, "album", "", "Spotify album ID (convenience for --uri spotify:album:ID)")
-	runCmd.Flags().BoolVar(&shuffle, "shuffle", false, "enable shuffle (overrides preset)")
-	rootCmd.AddCommand(runCmd)
+	playCmd.Flags().StringVar(&preset, "preset", "", "name of the preset to run")
+	playCmd.Flags().StringVar(&deviceID, "device", "", "Spotify device ID (overrides preset)")
+	playCmd.Flags().StringVar(&uri, "uri", "", "Spotify context URI (e.g. spotify:artist:xxx)")
+	playCmd.Flags().StringVar(&playlistID, "playlist", "", "Spotify playlist ID (convenience for --uri spotify:playlist:ID)")
+	playCmd.Flags().StringVar(&trackID, "track", "", "Spotify track ID (convenience for --uri spotify:track:ID)")
+	playCmd.Flags().StringVar(&albumID, "album", "", "Spotify album ID (convenience for --uri spotify:album:ID)")
+	playCmd.Flags().BoolVar(&shuffle, "shuffle", false, "enable shuffle (overrides preset)")
+	rootCmd.AddCommand(playCmd)
 }

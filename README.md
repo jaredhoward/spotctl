@@ -71,24 +71,24 @@ spotctl devices --config ./config.yaml
 
 Using a preset:
 ```bash
-spotctl run --preset sleep --config ./config.yaml
+spotctl play --preset sleep --config ./config.yaml
 ```
 
 Using the full context URI directly:
 ```bash
-spotctl run --device YOUR_DEVICE_ID --uri spotify:playlist:YOUR_PLAYLIST_ID --config ./config.yaml
+spotctl play --device YOUR_DEVICE_ID --uri spotify:playlist:YOUR_PLAYLIST_ID --config ./config.yaml
 ```
 
 Using convenience flags:
 ```bash
-spotctl run --device YOUR_DEVICE_ID --playlist YOUR_PLAYLIST_ID --config ./config.yaml
-spotctl run --device YOUR_DEVICE_ID --track YOUR_TRACK_ID --config ./config.yaml
-spotctl run --device YOUR_DEVICE_ID --album YOUR_ALBUM_ID --config ./config.yaml
+spotctl play --device YOUR_DEVICE_ID --playlist YOUR_PLAYLIST_ID --config ./config.yaml
+spotctl play --device YOUR_DEVICE_ID --track YOUR_TRACK_ID --config ./config.yaml
+spotctl play --device YOUR_DEVICE_ID --album YOUR_ALBUM_ID --config ./config.yaml
 ```
 
 Flags override preset values when both are provided:
 ```bash
-spotctl run --preset sleep --device OTHER_DEVICE_ID --config ./config.yaml
+spotctl play --preset sleep --device OTHER_DEVICE_ID --config ./config.yaml
 ```
 
 ## Commands
@@ -96,7 +96,7 @@ spotctl run --preset sleep --device OTHER_DEVICE_ID --config ./config.yaml
 | Command | Description |
 |---|---|
 | `spotctl setup` | Interactive setup and OAuth flow |
-| `spotctl run` | Start Spotify playback |
+| `spotctl play` | Start Spotify playback (`run` is also supported as an alias) |
 | `spotctl devices` | List available Spotify Connect devices |
 | `spotctl status` | Show current Spotify playback status |
 | `spotctl version` | Print the version |
@@ -148,7 +148,7 @@ Copy `config.yaml` to `/config/scripts/config.yaml` on your HA instance.
 ### `shell_commands.yaml`
 
 ```yaml
-spotify_sleep: /config/scripts/spotctl run --preset sleep --config /config/scripts/config.yaml
+spotify_sleep: /config/scripts/spotctl play --preset sleep --config /config/scripts/config.yaml
 ```
 
 ### HA Script
