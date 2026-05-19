@@ -98,6 +98,7 @@ spotctl run --preset sleep --device OTHER_DEVICE_ID --config ./config.yaml
 | `spotctl setup` | Interactive setup and OAuth flow |
 | `spotctl run` | Start Spotify playback |
 | `spotctl devices` | List available Spotify Connect devices |
+| `spotctl status` | Show current Spotify playback status |
 | `spotctl version` | Print the version |
 
 ## Flags
