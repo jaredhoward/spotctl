@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -23,22 +24,26 @@ func NewClient(accessToken string) *Client {
 }
 
 func (c *Client) Play(deviceID, playlistURI string) error {
-	body, err := json.Marshal(map[string]string{
-		"context_uri": playlistURI,
-	})
-	if err != nil {
-		return fmt.Errorf("could not marshal play request: %w", err)
+	var reqBody io.Reader
+	if playlistURI != "" {
+		body, err := json.Marshal(map[string]string{"context_uri": playlistURI})
+		if err != nil {
+			return fmt.Errorf("could not marshal play request: %w", err)
+		}
+		reqBody = bytes.NewReader(body)
 	}
 
 	req, err := http.NewRequest(http.MethodPut,
 		fmt.Sprintf("%s/play?device_id=%s", apiBase, deviceID),
-		bytes.NewReader(body),
+		reqBody,
 	)
 	if err != nil {
 		return fmt.Errorf("could not create play request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-	req.Header.Set("Content-Type", "application/json")
+	if playlistURI != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	return c.doExpect204(req, "play")
 }

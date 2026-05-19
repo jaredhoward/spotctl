@@ -60,9 +60,6 @@ var playCmd = &cobra.Command{
 		if p.DeviceID == "" {
 			return fmt.Errorf("device ID is required (use --device or set in preset)")
 		}
-		if p.ContextURI == "" {
-			return fmt.Errorf("context URI is required (use --uri, --playlist, --track, --album, or set in preset)")
-		}
 
 		log.Println("Refreshing Spotify access token...")
 		accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
