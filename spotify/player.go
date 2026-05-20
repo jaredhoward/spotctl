@@ -132,6 +132,19 @@ func (c *Client) Previous(deviceID string) error {
 	return c.doExpect204(req, "previous")
 }
 
+func (c *Client) SetVolume(deviceID string, volumePercent int) error {
+	req, err := http.NewRequest(http.MethodPut,
+		fmt.Sprintf("%s/volume?volume_percent=%d&device_id=%s", apiBase, volumePercent, deviceID),
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("could not create volume request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+
+	return c.doExpect204(req, "set volume")
+}
+
 func (c *Client) doExpect204(req *http.Request, action string) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
