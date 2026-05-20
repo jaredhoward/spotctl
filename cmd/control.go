@@ -54,7 +54,7 @@ func executePlaybackAction(action string, fn func(*spotify.Client, string) error
 		return fmt.Errorf("failed to refresh token: %w", err)
 	}
 
-	client := spotify.NewClient(accessToken)
+	client := newSpotifyClient(accessToken)
 	if err := fn(client, deviceID); err != nil {
 		return fmt.Errorf("failed to %s: %w", action, err)
 	}

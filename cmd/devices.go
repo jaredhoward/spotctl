@@ -22,7 +22,7 @@ var devicesCmd = &cobra.Command{
 			return fmt.Errorf("failed to refresh token: %w", err)
 		}
 
-		client := spotify.NewClient(accessToken)
+		client := newSpotifyClient(accessToken)
 
 		devices, err := client.GetDevices()
 		if err != nil {

@@ -34,7 +34,7 @@ var volumeCmd = &cobra.Command{
 			return fmt.Errorf("failed to refresh token: %w", err)
 		}
 
-		client := spotify.NewClient(accessToken)
+		client := newSpotifyClient(accessToken)
 		if err := client.SetVolume(volumeDeviceID, volumeLevel); err != nil {
 			return fmt.Errorf("failed to set volume: %w", err)
 		}

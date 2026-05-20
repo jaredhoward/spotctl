@@ -1,0 +1,61 @@
+package cmd
+
+import (
+	"testing"
+
+	"github.com/spf13/cobra"
+)
+
+func TestResolveURI(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().String("uri", "", "")
+	cmd.Flags().String("playlist", "", "")
+	cmd.Flags().String("track", "", "")
+	cmd.Flags().String("album", "", "")
+
+	if err := cmd.Flags().Set("uri", "spotify:artist:abc"); err != nil {
+		t.Fatal(err)
+	}
+	uri, err := resolveURI(cmd, "spotify:artist:abc", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uri != "spotify:artist:abc" {
+		t.Fatalf("expected uri to be spotify:artist:abc, got %q", uri)
+	}
+
+	cmd = &cobra.Command{}
+	cmd.Flags().String("uri", "", "")
+	cmd.Flags().String("playlist", "", "")
+	cmd.Flags().String("track", "", "")
+	cmd.Flags().String("album", "", "")
+	if err := cmd.Flags().Set("playlist", "playlistid"); err != nil {
+		t.Fatal(err)
+	}
+	uri, err = resolveURI(cmd, "", "playlistid", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uri != "spotify:playlist:playlistid" {
+		t.Fatalf("expected playlist uri, got %q", uri)
+	}
+}
+
+func TestResolveURIMultipleFlags(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().String("uri", "", "")
+	cmd.Flags().String("playlist", "", "")
+	cmd.Flags().String("track", "", "")
+	cmd.Flags().String("album", "", "")
+
+	if err := cmd.Flags().Set("uri", "spotify:artist:abc"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("track", "trackid"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := resolveURI(cmd, "spotify:artist:abc", "", "trackid", "")
+	if err == nil {
+		t.Fatal("expected error when multiple uri flags are set")
+	}
+}

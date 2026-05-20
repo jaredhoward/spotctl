@@ -1,0 +1,84 @@
+package spotify
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestRefreshAccessTokenSuccess(t *testing.T) {
+	oldURL := tokenURL
+	t.Cleanup(func() { tokenURL = oldURL })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST request, got %s", r.Method)
+		}
+		if !strings.Contains(r.Header.Get("Authorization"), "Basic") {
+			t.Fatal("expected Authorization header")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(TokenResponse{AccessToken: "access-token", TokenType: "Bearer", ExpiresIn: 3600})
+	}))
+	defer server.Close()
+
+	tokenURL = server.URL
+	accessToken, err := RefreshAccessToken(base64.StdEncoding.EncodeToString([]byte("id:secret")), "refresh-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accessToken != "access-token" {
+		t.Fatalf("expected access token %q, got %q", "access-token", accessToken)
+	}
+}
+
+func TestRefreshAccessTokenBadResponse(t *testing.T) {
+	oldURL := tokenURL
+	t.Cleanup(func() { tokenURL = oldURL })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	tokenURL = server.URL
+	if _, err := RefreshAccessToken("foo", "bar"); err == nil {
+		t.Fatal("expected error for bad token response")
+	}
+}
+
+func TestRefreshAccessTokenEmptyToken(t *testing.T) {
+	oldURL := tokenURL
+	t.Cleanup(func() { tokenURL = oldURL })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(TokenResponse{AccessToken: "", TokenType: "Bearer", ExpiresIn: 3600})
+	}))
+	defer server.Close()
+
+	tokenURL = server.URL
+	if _, err := RefreshAccessToken("foo", "bar"); err == nil {
+		t.Fatal("expected error for empty access token")
+	}
+}
+
+func TestRefreshAccessTokenDecodeError(t *testing.T) {
+	oldURL := tokenURL
+	t.Cleanup(func() { tokenURL = oldURL })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("not json"))
+	}))
+	defer server.Close()
+
+	tokenURL = server.URL
+	if _, err := RefreshAccessToken("foo", "bar"); err == nil {
+		t.Fatal("expected error for invalid JSON response")
+	}
+}

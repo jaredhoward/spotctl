@@ -31,7 +31,7 @@ var transferCmd = &cobra.Command{
 			return fmt.Errorf("failed to refresh token: %w", err)
 		}
 
-		client := spotify.NewClient(accessToken)
+		client := newSpotifyClient(accessToken)
 		if err := client.TransferPlayback([]string{transferDeviceID}, transferPlay); err != nil {
 			return fmt.Errorf("failed to transfer playback: %w", err)
 		}

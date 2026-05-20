@@ -33,7 +33,7 @@ type PlaybackState struct {
 
 func (c *Client) GetCurrentPlayback() (*PlaybackState, error) {
 	req, err := http.NewRequest(http.MethodGet,
-		fmt.Sprintf("%s", apiBase),
+		fmt.Sprintf("%s", APIBase),
 		nil,
 	)
 	if err != nil {

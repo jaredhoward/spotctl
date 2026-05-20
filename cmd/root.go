@@ -4,11 +4,13 @@ import (
 	"fmt"
 
 	"github.com/jaredhoward/spotctl/config"
+	"github.com/jaredhoward/spotctl/spotify"
 	"github.com/spf13/cobra"
 )
 
 var configPath string
 var appVersion string
+var newSpotifyClient = spotify.NewClient
 
 func SetVersion(v string) {
 	appVersion = v

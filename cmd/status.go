@@ -24,7 +24,7 @@ var statusCmd = &cobra.Command{
 			return fmt.Errorf("failed to refresh token: %w", err)
 		}
 
-		client := spotify.NewClient(accessToken)
+		client := newSpotifyClient(accessToken)
 		playback, err := client.GetCurrentPlayback()
 		if err != nil {
 			return fmt.Errorf("failed to get current playback: %w", err)

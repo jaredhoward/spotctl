@@ -8,7 +8,9 @@ import (
 	"strings"
 )
 
-const tokenURL = "https://accounts.spotify.com/api/token"
+var tokenURL = "https://accounts.spotify.com/api/token"
+
+var RefreshAccessToken = refreshAccessToken
 
 type TokenResponse struct {
 	AccessToken string `json:"access_token"`
@@ -16,7 +18,7 @@ type TokenResponse struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
-func RefreshAccessToken(clientB64, refreshToken string) (string, error) {
+func refreshAccessToken(clientB64, refreshToken string) (string, error) {
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
