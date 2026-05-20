@@ -113,12 +113,18 @@ Flags override preset values when both are provided:
 spotctl play --preset sleep --device OTHER_DEVICE_ID --config ./config.yaml
 ```
 
+Playback control examples:
+```bash
+spotctl transfer --device YOUR_DEVICE_ID --play --config ./config.yaml
+```
+
 ## Commands
 
 | Command | Description |
 |---|---|
 | `spotctl setup` | Interactive setup and OAuth flow |
 | `spotctl play` | Start Spotify playback (`run` is also supported as an alias) |
+| `spotctl transfer` | Transfer playback to a Spotify Connect device |
 | `spotctl devices` | List available Spotify Connect devices |
 | `spotctl status` | Show current Spotify playback status |
 | `spotctl version` | Print the version |

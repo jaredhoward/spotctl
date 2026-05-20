@@ -69,7 +69,11 @@ var playCmd = &cobra.Command{
 
 		client := spotify.NewClient(accessToken)
 
-		log.Printf("Starting playback of %s on device %s...", p.ContextURI, p.DeviceID)
+		if p.ContextURI != "" {
+			log.Printf("Starting playback of %s on device %s...", p.ContextURI, p.DeviceID)
+		} else {
+			log.Printf("Resuming playback on device %s...", p.DeviceID)
+		}
 		if err := client.Play(p.DeviceID, p.ContextURI); err != nil {
 			return fmt.Errorf("failed to start playback: %w", err)
 		}

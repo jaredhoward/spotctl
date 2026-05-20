@@ -48,6 +48,28 @@ func (c *Client) Play(deviceID, playlistURI string) error {
 	return c.doExpect204(req, "play")
 }
 
+func (c *Client) TransferPlayback(deviceIDs []string, play bool) error {
+	body, err := json.Marshal(map[string]interface{}{
+		"device_ids": deviceIDs,
+		"play":       play,
+	})
+	if err != nil {
+		return fmt.Errorf("could not marshal transfer request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPut,
+		apiBase,
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return fmt.Errorf("could not create transfer request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	return c.doExpect204(req, "transfer playback")
+}
+
 func (c *Client) Shuffle(deviceID string) error {
 	req, err := http.NewRequest(http.MethodPut,
 		fmt.Sprintf("%s/shuffle?state=true&device_id=%s", apiBase, deviceID),
