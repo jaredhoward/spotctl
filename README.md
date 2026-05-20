@@ -115,6 +115,9 @@ spotctl play --preset sleep --device OTHER_DEVICE_ID --config ./config.yaml
 
 Playback control examples:
 ```bash
+spotctl pause --device YOUR_DEVICE_ID --config ./config.yaml
+spotctl next --device YOUR_DEVICE_ID --config ./config.yaml
+spotctl previous --device YOUR_DEVICE_ID --config ./config.yaml
 spotctl volume --device YOUR_DEVICE_ID --level 50 --config ./config.yaml
 spotctl transfer --device YOUR_DEVICE_ID --play --config ./config.yaml
 ```
@@ -126,6 +129,9 @@ spotctl transfer --device YOUR_DEVICE_ID --play --config ./config.yaml
 | `spotctl setup` | Interactive setup and OAuth flow |
 | `spotctl play` | Start Spotify playback (`run` is also supported as an alias) |
 | `spotctl transfer` | Transfer playback to a Spotify Connect device |
+| `spotctl pause` | Pause Spotify playback |
+| `spotctl next` | Skip to the next track |
+| `spotctl previous` | Return to the previous track |
 | `spotctl volume` | Set Spotify playback volume |
 | `spotctl devices` | List available Spotify Connect devices |
 | `spotctl status` | Show current Spotify playback status |
