@@ -159,6 +159,34 @@ spotctl transfer --device YOUR_DEVICE_ID --play --config ./config.yaml
 
 Only one of `--uri`, `--playlist`, `--track`, or `--album` may be specified at a time.
 
+### `transfer` vs. `play` Without a URI
+
+These two commands can look similar when no new track or context is intended:
+
+```bash
+# Transfer the active session to a device (session migration)
+spotctl transfer --device YOUR_DEVICE_ID --play --config ./config.yaml
+
+# Resume playback on a device (no URI supplied)
+spotctl play --device YOUR_DEVICE_ID --config ./config.yaml
+```
+
+They map to different Spotify API calls and behave differently:
+
+| | `transfer` | `play` (no URI) |
+|---|---|---|
+| API call | `PUT /me/player` | `PUT /me/player/play` |
+| Carries over queue | Yes | No — uses the device's own last-known context |
+| Preserves track position | Yes | No |
+| Preserves shuffle/repeat | Yes | No |
+| Intended use | Moving an active session between devices | Resuming whatever that device was last doing |
+
+`transfer` is a session migration — Spotify treats it as the listener moving from one device to another mid-stream. `play` without a URI is a resume signal sent to a specific device, and its behaviour depends on whatever Spotify last remembers for that device, which can be inconsistent across device types.
+
+- Use `spotctl transfer --play` when handing off an active session from one device to another.
+- Use `spotctl play --uri` (or `--preset`) when starting something specific on a device.
+- Avoid `spotctl play` with no URI and no preset — it is the least predictable path.
+
 ## Re-authentication
 
 When your refresh token expires, re-run setup:
@@ -213,6 +241,31 @@ sequence:
     data:
       volume_level: 0.35
 ```
+
+### Volume Control: `spotctl` vs. Home Assistant Direct
+
+When you set volume via `spotctl`, the signal chain is:
+
+```
+spotctl → Spotify API → Spotify Connect → device
+```
+
+This works well for standalone use and for devices that Home Assistant cannot control directly (a phone, a laptop, or a third-party Spotify Connect receiver with no HA integration). However, when HA already has a native integration for the device — Cast, Sonos, AirPlay, etc. — letting HA own volume is the better choice:
+
+- Fewer hops and lower latency (local network vs. cloud round-trip)
+- Continues to work even if Spotify temporarily loses its connection to the device
+- Volume is a device concern, not a playback concern; keeping it with HA is the cleaner model
+- Avoids unintentionally affecting non-Spotify audio sources on the same device
+
+The exception is when you specifically want volume tied to the Spotify session — for example, to interact correctly with Spotify's normalization or cross-fade — or when HA simply has no path to the device.
+
+**Use `spotctl volume` when HA cannot reach the device directly:**
+
+```bash
+spotctl volume --device YOUR_DEVICE_ID --level 50 --config /config/scripts/config.yaml
+```
+
+**Otherwise, prefer HA's own volume action** (shown in the HA Script example above).
 
 ## Security
 
