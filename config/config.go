@@ -22,6 +22,7 @@ type Config struct {
 	RefreshToken string            `yaml:"refresh_token"`
 	RedirectURI  string            `yaml:"redirect_uri"`
 	Presets      map[string]Preset `yaml:"presets"`
+	DeviceNames  map[string]string `yaml:"device_names"`
 }
 
 func Load(path string) (*Config, error) {

@@ -67,6 +67,28 @@ To find your device ID, use the `devices` command:
 spotctl devices --config ./config.yaml
 ```
 
+Device name persistence
+-----------------------
+
+Some Spotify Connect devices stop reporting a friendly `name` when they become inactive. `spotctl` can persist device names you observe so the `devices` output remains readable even when Spotify omits the name.
+
+- To discover and save device names, run:
+
+```bash
+spotctl devices --update --config ./config.yaml
+```
+
+This will add (or update) a `device_names` mapping in your `config.yaml` like:
+
+```yaml
+device_names:
+  2cd72806a72944a01d1a70e77fb5de1f0b2a5ac8: "Living Room Speaker"
+  7b9a...: "Kitchen Echo"
+```
+
+After that, `spotctl devices` will use the stored name when the Spotify API returns an empty name for an inactive device.
+
+
 ### 3. Test
 
 Using a preset:
