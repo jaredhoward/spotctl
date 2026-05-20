@@ -117,7 +117,7 @@ func (c *Client) doExpect204(req *http.Request, action string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%s returned unexpected status %d", action, resp.StatusCode)
 	}
 
