@@ -47,12 +47,18 @@ var setupCmd = &cobra.Command{
 			presets = existing.Presets
 		}
 
+		deviceNames := map[string]string{}
+		if existing != nil && existing.DeviceNames != nil {
+			deviceNames = existing.DeviceNames
+		}
+
 		cfg := &config.Config{
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
 			RefreshToken: refreshToken,
 			RedirectURI:  redirectURI,
 			Presets:      presets,
+			DeviceNames:  deviceNames,
 		}
 
 		if err := config.Save(configPath, cfg); err != nil {

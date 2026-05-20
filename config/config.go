@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -16,13 +17,29 @@ type Preset struct {
 	Shuffle    bool   `yaml:"shuffle"`
 }
 
+const DefaultPlaybackPollInterval = 500 * time.Millisecond
+
 type Config struct {
-	ClientID     string            `yaml:"client_id"`
-	ClientSecret string            `yaml:"client_secret"`
-	RefreshToken string            `yaml:"refresh_token"`
-	RedirectURI  string            `yaml:"redirect_uri"`
-	Presets      map[string]Preset `yaml:"presets"`
-	DeviceNames  map[string]string `yaml:"device_names"`
+	ClientID              string            `yaml:"client_id"`
+	ClientSecret          string            `yaml:"client_secret"`
+	RefreshToken          string            `yaml:"refresh_token"`
+	RedirectURI           string            `yaml:"redirect_uri"`
+	Presets               map[string]Preset `yaml:"presets"`
+	DeviceNames           map[string]string `yaml:"device_names"`
+	PlaybackPollInterval  string            `yaml:"playback_poll_interval,omitempty"`
+}
+
+// PlaybackPollIntervalDuration returns the configured poll interval, falling
+// back to DefaultPlaybackPollInterval if unset or unparseable.
+func (c *Config) PlaybackPollIntervalDuration() time.Duration {
+	if c.PlaybackPollInterval == "" {
+		return DefaultPlaybackPollInterval
+	}
+	d, err := time.ParseDuration(c.PlaybackPollInterval)
+	if err != nil || d <= 0 {
+		return DefaultPlaybackPollInterval
+	}
+	return d
 }
 
 func Load(path string) (*Config, error) {

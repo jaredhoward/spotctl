@@ -3,7 +3,9 @@ package spotify
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 )
 
 type Device struct {
@@ -35,7 +37,8 @@ func (c *Client) GetDevices() ([]Device, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("devices request returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("devices request returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var devicesResp DevicesResponse

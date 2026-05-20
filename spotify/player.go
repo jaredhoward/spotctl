@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -91,7 +92,8 @@ func (c *Client) Shuffle(deviceID string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("shuffle returned unexpected status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("shuffle returned unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	return nil
@@ -157,7 +159,8 @@ func (c *Client) doExpect204(req *http.Request, action string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s returned unexpected status %d", action, resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("%s returned unexpected status %d: %s", action, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	return nil

@@ -80,7 +80,9 @@ var playCmd = &cobra.Command{
 
 		if p.Shuffle {
 			log.Println("Waiting for playback to start...")
-			time.Sleep(2 * time.Second)
+			if err := waitForPlayback(client, 15*time.Second, cfg.PlaybackPollIntervalDuration()); err != nil {
+				log.Printf("Warning: %v; attempting shuffle anyway...", err)
+			}
 
 			log.Println("Enabling shuffle...")
 			if err := client.Shuffle(p.DeviceID); err != nil {
@@ -91,6 +93,18 @@ var playCmd = &cobra.Command{
 		log.Println("Done.")
 		return nil
 	},
+}
+
+func waitForPlayback(client *spotify.Client, timeout, pollInterval time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		state, err := client.GetCurrentPlayback()
+		if err == nil && state != nil && state.IsPlaying {
+			return nil
+		}
+		time.Sleep(pollInterval)
+	}
+	return fmt.Errorf("timed out waiting for playback to start")
 }
 
 func resolveURI(cmd *cobra.Command, uri, playlistID, trackID, albumID string) (string, error) {

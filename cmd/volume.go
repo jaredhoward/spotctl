@@ -46,6 +46,7 @@ var volumeCmd = &cobra.Command{
 
 func init() {
 	volumeCmd.Flags().StringVar(&volumeDeviceID, "device", "", "Spotify device ID")
-	volumeCmd.Flags().IntVar(&volumeLevel, "level", -1, "Volume level 0-100")
+	volumeCmd.Flags().IntVar(&volumeLevel, "level", 0, "Volume level 0-100")
+	_ = volumeCmd.MarkFlagRequired("level")
 	rootCmd.AddCommand(volumeCmd)
 }

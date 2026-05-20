@@ -3,7 +3,9 @@ package spotify
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 )
 
 type PlaybackContext struct {
@@ -51,7 +53,8 @@ func (c *Client) GetCurrentPlayback() (*PlaybackState, error) {
 		return nil, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("current playback returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("current playback returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var playback PlaybackState

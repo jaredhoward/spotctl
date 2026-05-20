@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
+	"unicode"
 
 	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/spotify"
@@ -59,9 +59,18 @@ func executePlaybackAction(action string, fn func(*spotify.Client, string) error
 		return fmt.Errorf("failed to %s: %w", action, err)
 	}
 
-	message := strings.Title(action)
+	message := ucFirst(action)
 	fmt.Printf("%s on device %s\n", message, deviceID)
 	return nil
+}
+
+func ucFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	runes := []rune(s)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }
 
 func init() {
