@@ -24,75 +24,77 @@ var playCmd = &cobra.Command{
 	Use:     "play",
 	Aliases: []string{"run"},
 	Short:   "Start Spotify playback",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			return fmt.Errorf("failed to load config: %w", err)
+	RunE:    runPlay,
+}
+
+func runPlay(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	var p config.Preset
+
+	if preset != "" {
+		found, ok := cfg.Presets[preset]
+		if !ok {
+			return fmt.Errorf("preset %q not found in config", preset)
+		}
+		p = found
+	}
+
+	// Resolve context URI from convenience flags
+	contextURI, err := resolveURI(cmd, uri, playlistID, trackID, albumID)
+	if err != nil {
+		return err
+	}
+
+	// Flags override preset values
+	if deviceID != "" {
+		p.DeviceID = deviceID
+	}
+	if contextURI != "" {
+		p.ContextURI = contextURI
+	}
+	if cmd.Flags().Changed("shuffle") {
+		p.Shuffle = shuffle
+	}
+
+	if p.DeviceID == "" {
+		return fmt.Errorf("device ID is required (use --device or set in preset)")
+	}
+
+	log.Println("Refreshing Spotify access token...")
+	accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
+	if err != nil {
+		return fmt.Errorf("failed to refresh token: %w", err)
+	}
+
+	client := newSpotifyClient(accessToken)
+
+	if p.ContextURI != "" {
+		log.Printf("Starting playback of %s on device %s...", p.ContextURI, p.DeviceID)
+	} else {
+		log.Printf("Resuming playback on device %s...", p.DeviceID)
+	}
+	if err := client.Play(p.DeviceID, p.ContextURI); err != nil {
+		return fmt.Errorf("failed to start playback: %w", err)
+	}
+
+	if p.Shuffle {
+		log.Println("Waiting for playback to start...")
+		if err := waitForPlayback(client, 15*time.Second, cfg.PlaybackPollIntervalDuration()); err != nil {
+			log.Printf("Warning: %v; attempting shuffle anyway...", err)
 		}
 
-		var p config.Preset
-
-		if preset != "" {
-			found, ok := cfg.Presets[preset]
-			if !ok {
-				return fmt.Errorf("preset %q not found in config", preset)
-			}
-			p = found
+		log.Println("Enabling shuffle...")
+		if err := client.Shuffle(p.DeviceID); err != nil {
+			log.Printf("Warning: failed to enable shuffle: %v", err)
 		}
+	}
 
-		// Resolve context URI from convenience flags
-		contextURI, err := resolveURI(cmd, uri, playlistID, trackID, albumID)
-		if err != nil {
-			return err
-		}
-
-		// Flags override preset values
-		if deviceID != "" {
-			p.DeviceID = deviceID
-		}
-		if contextURI != "" {
-			p.ContextURI = contextURI
-		}
-		if cmd.Flags().Changed("shuffle") {
-			p.Shuffle = shuffle
-		}
-
-		if p.DeviceID == "" {
-			return fmt.Errorf("device ID is required (use --device or set in preset)")
-		}
-
-		log.Println("Refreshing Spotify access token...")
-		accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
-		if err != nil {
-			return fmt.Errorf("failed to refresh token: %w", err)
-		}
-
-		client := newSpotifyClient(accessToken)
-
-		if p.ContextURI != "" {
-			log.Printf("Starting playback of %s on device %s...", p.ContextURI, p.DeviceID)
-		} else {
-			log.Printf("Resuming playback on device %s...", p.DeviceID)
-		}
-		if err := client.Play(p.DeviceID, p.ContextURI); err != nil {
-			return fmt.Errorf("failed to start playback: %w", err)
-		}
-
-		if p.Shuffle {
-			log.Println("Waiting for playback to start...")
-			if err := waitForPlayback(client, 15*time.Second, cfg.PlaybackPollIntervalDuration()); err != nil {
-				log.Printf("Warning: %v; attempting shuffle anyway...", err)
-			}
-
-			log.Println("Enabling shuffle...")
-			if err := client.Shuffle(p.DeviceID); err != nil {
-				log.Printf("Warning: failed to enable shuffle: %v", err)
-			}
-		}
-
-		log.Println("Done.")
-		return nil
-	},
+	log.Println("Done.")
+	return nil
 }
 
 func waitForPlayback(client *spotify.Client, timeout, pollInterval time.Duration) error {

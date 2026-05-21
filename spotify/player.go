@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-var APIBase = "https://api.spotify.com/v1/me/player"
-
 type Client struct {
 	accessToken string
 	httpClient  *http.Client

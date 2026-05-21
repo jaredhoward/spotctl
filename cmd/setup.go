@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/jaredhoward/spotctl/config"
+	"github.com/jaredhoward/spotctl/spotify"
 	"github.com/spf13/cobra"
 )
 
@@ -71,14 +72,14 @@ var setupCmd = &cobra.Command{
 	},
 }
 
-func oauthFlow(clientID, clientSecret, redirectURI string) (string, error) {
+func oauthFlow(clientID, clientSecret, redirectURI string, tokenEndpoint ...string) (string, error) {
 	params := url.Values{}
 	params.Set("client_id", clientID)
 	params.Set("response_type", "code")
 	params.Set("redirect_uri", redirectURI)
 	params.Set("scope", scopes)
 
-	authURL := "https://accounts.spotify.com/authorize?" + params.Encode()
+	authURL := spotify.URLAuth + "?" + params.Encode()
 	fmt.Printf("Open this URL in your browser:\n\n%s\n\n", authURL)
 	fmt.Printf("After authorizing, you'll be redirected to:\n%s?code=XXXXXX\n\n", redirectURI)
 
@@ -102,7 +103,11 @@ func oauthFlow(clientID, clientSecret, redirectURI string) (string, error) {
 	data.Set("code", code)
 	data.Set("redirect_uri", redirectURI)
 
-	req, err := http.NewRequest(http.MethodPost, "https://accounts.spotify.com/api/token",
+	endpoint := spotify.URLToken
+	if len(tokenEndpoint) > 0 {
+		endpoint = tokenEndpoint[0]
+	}
+	req, err := http.NewRequest(http.MethodPost, endpoint,
 		strings.NewReader(data.Encode()),
 	)
 	if err != nil {

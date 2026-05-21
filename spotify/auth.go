@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-var tokenURL = "https://accounts.spotify.com/api/token"
-
 var RefreshAccessToken = refreshAccessToken
 
 type TokenResponse struct {
@@ -23,7 +21,7 @@ func refreshAccessToken(clientB64, refreshToken string) (string, error) {
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
 
-	req, err := http.NewRequest(http.MethodPost, tokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequest(http.MethodPost, URLToken, strings.NewReader(data.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("could not create token request: %w", err)
 	}

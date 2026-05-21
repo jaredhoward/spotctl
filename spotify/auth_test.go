@@ -10,8 +10,8 @@ import (
 )
 
 func TestRefreshAccessTokenSuccess(t *testing.T) {
-	oldURL := tokenURL
-	t.Cleanup(func() { tokenURL = oldURL })
+	oldURL := URLToken
+	t.Cleanup(func() { URLToken = oldURL })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -26,7 +26,7 @@ func TestRefreshAccessTokenSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tokenURL = server.URL
+	URLToken = server.URL
 	accessToken, err := RefreshAccessToken(base64.StdEncoding.EncodeToString([]byte("id:secret")), "refresh-token")
 	if err != nil {
 		t.Fatal(err)
@@ -37,23 +37,23 @@ func TestRefreshAccessTokenSuccess(t *testing.T) {
 }
 
 func TestRefreshAccessTokenBadResponse(t *testing.T) {
-	oldURL := tokenURL
-	t.Cleanup(func() { tokenURL = oldURL })
+	oldURL := URLToken
+	t.Cleanup(func() { URLToken = oldURL })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer server.Close()
 
-	tokenURL = server.URL
+	URLToken = server.URL
 	if _, err := RefreshAccessToken("foo", "bar"); err == nil {
 		t.Fatal("expected error for bad token response")
 	}
 }
 
 func TestRefreshAccessTokenEmptyToken(t *testing.T) {
-	oldURL := tokenURL
-	t.Cleanup(func() { tokenURL = oldURL })
+	oldURL := URLToken
+	t.Cleanup(func() { URLToken = oldURL })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -61,15 +61,15 @@ func TestRefreshAccessTokenEmptyToken(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tokenURL = server.URL
+	URLToken = server.URL
 	if _, err := RefreshAccessToken("foo", "bar"); err == nil {
 		t.Fatal("expected error for empty access token")
 	}
 }
 
 func TestRefreshAccessTokenDecodeError(t *testing.T) {
-	oldURL := tokenURL
-	t.Cleanup(func() { tokenURL = oldURL })
+	oldURL := URLToken
+	t.Cleanup(func() { URLToken = oldURL })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -77,8 +77,26 @@ func TestRefreshAccessTokenDecodeError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tokenURL = server.URL
+	URLToken = server.URL
 	if _, err := RefreshAccessToken("foo", "bar"); err == nil {
 		t.Fatal("expected error for invalid JSON response")
+	}
+}
+
+// TestRefreshAccessTokenNetworkError covers the branch where the HTTP request
+// itself fails (connection refused / network error), not just a bad status.
+func TestRefreshAccessTokenNetworkError(t *testing.T) {
+	oldURL := URLToken
+	t.Cleanup(func() { URLToken = oldURL })
+
+	// Start a server just to get a valid address, then close it immediately so
+	// any connection attempt fails with a network error.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	addr := server.URL
+	server.Close()
+
+	URLToken = addr
+	if _, err := RefreshAccessToken("clientb64", "refresh"); err == nil {
+		t.Fatal("expected network error when server is closed")
 	}
 }

@@ -13,54 +13,56 @@ import (
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show current Spotify playback status",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			return fmt.Errorf("failed to load config: %w", err)
-		}
+	RunE:  runStatus,
+}
 
-		accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
-		if err != nil {
-			return fmt.Errorf("failed to refresh token: %w", err)
-		}
+func runStatus(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
 
-		client := newSpotifyClient(accessToken)
-		playback, err := client.GetCurrentPlayback()
-		if err != nil {
-			return fmt.Errorf("failed to get current playback: %w", err)
-		}
+	accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
+	if err != nil {
+		return fmt.Errorf("failed to refresh token: %w", err)
+	}
 
-		if playback == nil {
-			fmt.Println("No active playback found.")
-			fmt.Println("Make sure Spotify is playing on a Connect device and try again.")
-			return nil
-		}
+	client := newSpotifyClient(accessToken)
+	playback, err := client.GetCurrentPlayback()
+	if err != nil {
+		return fmt.Errorf("failed to get current playback: %w", err)
+	}
 
-		playing := "paused"
-		if playback.IsPlaying {
-			playing = "playing"
-		}
-
-		fmt.Printf("Device: %s (%s) %s\n", playback.Device.Name, playback.Device.Type, deviceActivity(playback.Device.IsActive))
-		fmt.Printf("Status: %s | shuffle: %t | repeat: %s | volume: %d%%\n",
-			playing,
-			playback.ShuffleState,
-			playback.RepeatState,
-			playback.Device.VolumePercent,
-		)
-
-		if playback.Item != nil {
-			fmt.Printf("Track: %s\n", playback.Item.Name)
-			fmt.Printf("Artists: %s\n", joinArtists(playback.Item.Artists))
-			fmt.Printf("Progress: %s / %s\n", formatDurationMS(playback.ProgressMS), formatDurationMS(playback.Item.DurationMS))
-		}
-
-		if playback.Context != nil && playback.Context.URI != "" {
-			fmt.Printf("Context: %s\n", playback.Context.URI)
-		}
-
+	if playback == nil {
+		fmt.Println("No active playback found.")
+		fmt.Println("Make sure Spotify is playing on a Connect device and try again.")
 		return nil
-	},
+	}
+
+	playing := "paused"
+	if playback.IsPlaying {
+		playing = "playing"
+	}
+
+	fmt.Printf("Device: %s (%s) %s\n", playback.Device.Name, playback.Device.Type, deviceActivity(playback.Device.IsActive))
+	fmt.Printf("Status: %s | shuffle: %t | repeat: %s | volume: %d%%\n",
+		playing,
+		playback.ShuffleState,
+		playback.RepeatState,
+		playback.Device.VolumePercent,
+	)
+
+	if playback.Item != nil {
+		fmt.Printf("Track: %s\n", playback.Item.Name)
+		fmt.Printf("Artists: %s\n", joinArtists(playback.Item.Artists))
+		fmt.Printf("Progress: %s / %s\n", formatDurationMS(playback.ProgressMS), formatDurationMS(playback.Item.DurationMS))
+	}
+
+	if playback.Context != nil && playback.Context.URI != "" {
+		fmt.Printf("Context: %s\n", playback.Context.URI)
+	}
+
+	return nil
 }
 
 func joinArtists(artists []spotify.Artist) string {

@@ -30,6 +30,10 @@ var versionCmd = &cobra.Command{
 }
 
 func Execute() error {
+	return executeRoot()
+}
+
+func executeRoot() error {
 	return rootCmd.Execute()
 }
 

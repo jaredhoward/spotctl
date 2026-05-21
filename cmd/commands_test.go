@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -54,6 +56,37 @@ func captureOutput(t *testing.T, fn func()) string {
 		t.Fatal(err)
 	}
 	return string(output)
+}
+
+// captureOutputAndLogs captures both stdout and log package output.
+func captureOutputAndLogs(t *testing.T, fn func()) (stdout, logs string) {
+	t.Helper()
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	rStdout, wStdout, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = wStdout
+
+	// Capture log output
+	oldLogWriter := log.Writer()
+	logBuf := &bytes.Buffer{}
+	log.SetOutput(logBuf)
+	defer log.SetOutput(oldLogWriter)
+
+	fn()
+
+	wStdout.Close()
+	os.Stdout = oldStdout
+
+	stdoutData, err := io.ReadAll(rStdout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return string(stdoutData), logBuf.String()
 }
 
 func TestPlayCommandRunERequiresDevice(t *testing.T) {

@@ -92,3 +92,21 @@ func TestGetCurrentPlaybackErrorStatus(t *testing.T) {
 		t.Fatal("expected error for non-200 response")
 	}
 }
+
+func TestGetCurrentPlaybackDecodeError(t *testing.T) {
+	oldAPIBase := APIBase
+	t.Cleanup(func() { APIBase = oldAPIBase })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("invalid json"))
+	}))
+	defer server.Close()
+
+	APIBase = server.URL
+	client := &Client{accessToken: "t", httpClient: server.Client()}
+	if _, err := client.GetCurrentPlayback(); err == nil {
+		t.Fatal("expected decode error")
+	}
+}

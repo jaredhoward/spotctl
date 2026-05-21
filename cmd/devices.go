@@ -11,77 +11,79 @@ import (
 var devicesCmd = &cobra.Command{
 	Use:   "devices",
 	Short: "List available Spotify Connect devices",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			return fmt.Errorf("failed to load config: %w", err)
-		}
+	RunE:  runDevices,
+}
 
-		accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
-		if err != nil {
-			return fmt.Errorf("failed to refresh token: %w", err)
-		}
+func runDevices(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
 
-		client := newSpotifyClient(accessToken)
+	accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
+	if err != nil {
+		return fmt.Errorf("failed to refresh token: %w", err)
+	}
 
-		devices, err := client.GetDevices()
-		if err != nil {
-			return fmt.Errorf("failed to get devices: %w", err)
-		}
+	client := newSpotifyClient(accessToken)
 
-		if len(devices) == 0 {
-			fmt.Println("No active Spotify Connect devices found.")
-			fmt.Println("Make sure your device is on and has been used recently.")
-			return nil
-		}
+	devices, err := client.GetDevices()
+	if err != nil {
+		return fmt.Errorf("failed to get devices: %w", err)
+	}
 
-		// Optionally update config device name mappings when names are available
-		update := cmd.Flags().Changed("update") && cmd.Flag("update").Value.String() == "true"
-
-		if cfg.DeviceNames == nil {
-			cfg.DeviceNames = map[string]string{}
-		}
-
-		changed := false
-
-		fmt.Println("Available Spotify Connect devices:")
-		fmt.Println()
-		for _, d := range devices {
-			active := ""
-			if d.IsActive {
-				active = " *"
-			}
-
-			displayName := d.Name
-			missingName := displayName == "" || displayName == d.ID
-			if missingName {
-				if n, ok := cfg.DeviceNames[d.ID]; ok {
-					displayName = n
-				}
-			} else if update {
-				// store observed name into config, but avoid storing when
-				// the reported name is just the device ID (noisy/undesirable)
-				if displayName != d.ID && cfg.DeviceNames[d.ID] != displayName {
-					cfg.DeviceNames[d.ID] = displayName
-					changed = true
-				}
-			}
-
-			fmt.Printf("  %-45s %-30s (%-10s) %d%%%s\n",
-				d.ID, displayName, d.Type, d.VolumePercent, active)
-		}
-		fmt.Println()
-		fmt.Println("* = currently active device")
-
-		if update && changed {
-			if err := config.Save(configPath, cfg); err != nil {
-				return fmt.Errorf("failed to save config with device names: %w", err)
-			}
-			fmt.Println("Updated config with discovered device names.")
-		}
-
+	if len(devices) == 0 {
+		fmt.Println("No active Spotify Connect devices found.")
+		fmt.Println("Make sure your device is on and has been used recently.")
 		return nil
-	},
+	}
+
+	// Optionally update config device name mappings when names are available
+	update := cmd.Flags().Changed("update") && cmd.Flag("update").Value.String() == "true"
+
+	if cfg.DeviceNames == nil {
+		cfg.DeviceNames = map[string]string{}
+	}
+
+	changed := false
+
+	fmt.Println("Available Spotify Connect devices:")
+	fmt.Println()
+	for _, d := range devices {
+		active := ""
+		if d.IsActive {
+			active = " *"
+		}
+
+		displayName := d.Name
+		missingName := displayName == "" || displayName == d.ID
+		if missingName {
+			if n, ok := cfg.DeviceNames[d.ID]; ok {
+				displayName = n
+			}
+		} else if update {
+			// store observed name into config, but avoid storing when
+			// the reported name is just the device ID (noisy/undesirable)
+			if displayName != d.ID && cfg.DeviceNames[d.ID] != displayName {
+				cfg.DeviceNames[d.ID] = displayName
+				changed = true
+			}
+		}
+
+		fmt.Printf("  %-45s %-30s (%-10s) %d%%%s\n",
+			d.ID, displayName, d.Type, d.VolumePercent, active)
+	}
+	fmt.Println()
+	fmt.Println("* = currently active device")
+
+	if update && changed {
+		if err := config.Save(configPath, cfg); err != nil {
+			return fmt.Errorf("failed to save config with device names: %w", err)
+		}
+		fmt.Println("Updated config with discovered device names.")
+	}
+
+	return nil
 }
 
 var updateDevicesFlag bool

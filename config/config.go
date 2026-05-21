@@ -20,13 +20,13 @@ type Preset struct {
 const DefaultPlaybackPollInterval = 500 * time.Millisecond
 
 type Config struct {
-	ClientID              string            `yaml:"client_id"`
-	ClientSecret          string            `yaml:"client_secret"`
-	RefreshToken          string            `yaml:"refresh_token"`
-	RedirectURI           string            `yaml:"redirect_uri"`
-	Presets               map[string]Preset `yaml:"presets"`
-	DeviceNames           map[string]string `yaml:"device_names"`
-	PlaybackPollInterval  string            `yaml:"playback_poll_interval,omitempty"`
+	ClientID             string            `yaml:"client_id"`
+	ClientSecret         string            `yaml:"client_secret"`
+	RefreshToken         string            `yaml:"refresh_token"`
+	RedirectURI          string            `yaml:"redirect_uri"`
+	PlaybackPollInterval string            `yaml:"playback_poll_interval,omitempty"`
+	Presets              map[string]Preset `yaml:"presets"`
+	DeviceNames          map[string]string `yaml:"device_names"`
 }
 
 // PlaybackPollIntervalDuration returns the configured poll interval, falling
