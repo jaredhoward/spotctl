@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/jaredhoward/spotctl/config"
+	"github.com/jaredhoward/spotctl/spotify"
 	"github.com/spf13/cobra"
 )
 
@@ -19,19 +22,6 @@ func runDevices(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	devices, err := client.GetDevices()
-	if err != nil {
-		return fmt.Errorf("failed to get devices: %w", err)
-	}
-
-	if len(devices) == 0 {
-		fmt.Println("No active Spotify Connect devices found.")
-		fmt.Println("Make sure your device is on and has been used recently.")
-		return nil
-	}
-
-	update := cmd.Flags().Changed("update") && cmd.Flag("update").Value.String() == "true"
-
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -40,36 +30,88 @@ func runDevices(cmd *cobra.Command, args []string) error {
 		cfg.DeviceNames = map[string]string{}
 	}
 
-	changed := false
+	liveDevices, err := client.GetDevices()
+	if err != nil {
+		return fmt.Errorf("failed to get devices: %w", err)
+	}
 
-	fmt.Println("Available Spotify Connect devices:")
+	type displayDevice struct {
+		spotify.Device
+		displayName string
+		offline     bool
+	}
+
+	seen := make(map[string]bool, len(liveDevices))
+	all := make([]displayDevice, 0, len(liveDevices)+len(cfg.DeviceNames))
+
+	for _, d := range liveDevices {
+		seen[d.ID] = true
+		name := d.Name
+		if name == "" || name == d.ID {
+			if n, ok := cfg.DeviceNames[d.ID]; ok {
+				name = n
+			}
+		}
+		all = append(all, displayDevice{Device: d, displayName: name})
+	}
+
+	for id, name := range cfg.DeviceNames {
+		if !seen[id] {
+			all = append(all, displayDevice{
+				Device:      spotify.Device{ID: id, Name: name},
+				displayName: name,
+				offline:     true,
+			})
+		}
+	}
+
+	if len(all) == 0 {
+		fmt.Println("No Spotify Connect devices found (live or configured).")
+		return nil
+	}
+
+	// Sort by display name (case-insensitive), ID as tiebreak.
+	sort.SliceStable(all, func(i, j int) bool {
+		ni := strings.ToLower(all[i].displayName)
+		nj := strings.ToLower(all[j].displayName)
+		if ni != nj {
+			return ni < nj
+		}
+		return all[i].ID < all[j].ID
+	})
+
+	update := cmd.Flags().Changed("update") && cmd.Flag("update").Value.String() == "true"
+	configChanged := false
+
+	fmt.Println("Spotify Connect devices:")
 	fmt.Println()
-	for _, d := range devices {
-		active := ""
+	for _, d := range all {
+		suffix := ""
 		if d.IsActive {
-			active = " *"
+			suffix = " *"
+		} else if d.offline {
+			suffix = " (offline)"
 		}
 
-		displayName := d.Name
-		missingName := displayName == "" || displayName == d.ID
-		if missingName {
-			if n, ok := cfg.DeviceNames[d.ID]; ok {
-				displayName = n
+		if update && !d.offline {
+			if d.displayName != "" && d.displayName != d.ID && cfg.DeviceNames[d.ID] != d.displayName {
+				cfg.DeviceNames[d.ID] = d.displayName
+				configChanged = true
 			}
-		} else if update {
-			if displayName != d.ID && cfg.DeviceNames[d.ID] != displayName {
-				cfg.DeviceNames[d.ID] = displayName
-				changed = true
-			}
+		}
+
+		typeField := d.Type
+		if typeField == "" {
+			typeField = "unknown"
 		}
 
 		fmt.Printf("  %-45s %-30s (%-10s) %d%%%s\n",
-			d.ID, displayName, d.Type, d.VolumePercent, active)
+			d.ID, d.displayName, typeField, d.VolumePercent, suffix)
 	}
 	fmt.Println()
 	fmt.Println("* = currently active device")
 
-	if update && changed {
+	if update && configChanged {
 		if err := config.Save(configPath, cfg); err != nil {
 			return fmt.Errorf("failed to save config with device names: %w", err)
 		}
