@@ -37,7 +37,7 @@ func (c *Client) Play(deviceID, playlistURI string) error {
 	}
 
 	req, err := http.NewRequest(http.MethodPut,
-		fmt.Sprintf("%s/play?device_id=%s", APIBase, deviceID),
+		fmt.Sprintf("%s/play?device_id=%s", URLPlayer, deviceID),
 		reqBody,
 	)
 	if err != nil {
@@ -61,7 +61,7 @@ func (c *Client) TransferPlayback(deviceIDs []string, play bool) error {
 	}
 
 	req, err := http.NewRequest(http.MethodPut,
-		APIBase,
+		URLPlayer,
 		bytes.NewReader(body),
 	)
 	if err != nil {
@@ -75,7 +75,7 @@ func (c *Client) TransferPlayback(deviceIDs []string, play bool) error {
 
 func (c *Client) Shuffle(deviceID string) error {
 	req, err := http.NewRequest(http.MethodPut,
-		fmt.Sprintf("%s/shuffle?state=true&device_id=%s", APIBase, deviceID),
+		fmt.Sprintf("%s/shuffle?state=true&device_id=%s", URLPlayer, deviceID),
 		nil,
 	)
 	if err != nil {
@@ -83,23 +83,12 @@ func (c *Client) Shuffle(deviceID string) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("shuffle request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("shuffle returned unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-
-	return nil
+	return c.doExpect204(req, "shuffle")
 }
 
 func (c *Client) Pause(deviceID string) error {
 	req, err := http.NewRequest(http.MethodPut,
-		fmt.Sprintf("%s/pause?device_id=%s", APIBase, deviceID),
+		fmt.Sprintf("%s/pause?device_id=%s", URLPlayer, deviceID),
 		nil,
 	)
 	if err != nil {
@@ -112,7 +101,7 @@ func (c *Client) Pause(deviceID string) error {
 
 func (c *Client) Next(deviceID string) error {
 	req, err := http.NewRequest(http.MethodPost,
-		fmt.Sprintf("%s/next?device_id=%s", APIBase, deviceID),
+		fmt.Sprintf("%s/next?device_id=%s", URLPlayer, deviceID),
 		nil,
 	)
 	if err != nil {
@@ -125,7 +114,7 @@ func (c *Client) Next(deviceID string) error {
 
 func (c *Client) Previous(deviceID string) error {
 	req, err := http.NewRequest(http.MethodPost,
-		fmt.Sprintf("%s/previous?device_id=%s", APIBase, deviceID),
+		fmt.Sprintf("%s/previous?device_id=%s", URLPlayer, deviceID),
 		nil,
 	)
 	if err != nil {
@@ -138,7 +127,7 @@ func (c *Client) Previous(deviceID string) error {
 
 func (c *Client) SetVolume(deviceID string, volumePercent int) error {
 	req, err := http.NewRequest(http.MethodPut,
-		fmt.Sprintf("%s/volume?volume_percent=%d&device_id=%s", APIBase, volumePercent, deviceID),
+		fmt.Sprintf("%s/volume?volume_percent=%d&device_id=%s", URLPlayer, volumePercent, deviceID),
 		nil,
 	)
 	if err != nil {

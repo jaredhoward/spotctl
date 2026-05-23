@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/jaredhoward/spotctl/config"
-	"github.com/jaredhoward/spotctl/spotify"
 	"github.com/spf13/cobra"
 )
 
@@ -15,17 +14,10 @@ var devicesCmd = &cobra.Command{
 }
 
 func runDevices(cmd *cobra.Command, args []string) error {
-	cfg, err := config.Load(configPath)
+	client, err := newClientFromConfig()
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
 	}
-
-	accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
-	if err != nil {
-		return fmt.Errorf("failed to refresh token: %w", err)
-	}
-
-	client := newSpotifyClient(accessToken)
 
 	devices, err := client.GetDevices()
 	if err != nil {
@@ -38,9 +30,12 @@ func runDevices(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Optionally update config device name mappings when names are available
 	update := cmd.Flags().Changed("update") && cmd.Flag("update").Value.String() == "true"
 
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
 	if cfg.DeviceNames == nil {
 		cfg.DeviceNames = map[string]string{}
 	}
@@ -62,8 +57,6 @@ func runDevices(cmd *cobra.Command, args []string) error {
 				displayName = n
 			}
 		} else if update {
-			// store observed name into config, but avoid storing when
-			// the reported name is just the device ID (noisy/undesirable)
 			if displayName != d.ID && cfg.DeviceNames[d.ID] != displayName {
 				cfg.DeviceNames[d.ID] = displayName
 				changed = true

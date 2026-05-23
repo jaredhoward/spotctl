@@ -34,10 +34,7 @@ type PlaybackState struct {
 }
 
 func (c *Client) GetCurrentPlayback() (*PlaybackState, error) {
-	req, err := http.NewRequest(http.MethodGet,
-		fmt.Sprintf("%s", APIBase),
-		nil,
-	)
+	req, err := http.NewRequest(http.MethodGet, URLPlayer, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create current playback request: %w", err)
 	}

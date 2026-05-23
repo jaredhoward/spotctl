@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/spotify"
 	"github.com/spf13/cobra"
 )
@@ -17,17 +16,11 @@ var statusCmd = &cobra.Command{
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	cfg, err := config.Load(configPath)
+	client, err := newClientFromConfig()
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
 	}
 
-	accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
-	if err != nil {
-		return fmt.Errorf("failed to refresh token: %w", err)
-	}
-
-	client := newSpotifyClient(accessToken)
 	playback, err := client.GetCurrentPlayback()
 	if err != nil {
 		return fmt.Errorf("failed to get current playback: %w", err)

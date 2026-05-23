@@ -33,7 +33,8 @@ func writeTempConfig(t *testing.T, cfg *config.Config) string {
 
 func resetPlayCmdFlags(t *testing.T) {
 	t.Helper()
-	for _, name := range []string{"device", "uri", "playlist", "track", "album", "shuffle"} {
+	// "device" is now a persistent root flag, not a play-local flag.
+	for _, name := range []string{"uri", "playlist", "track", "album", "shuffle"} {
 		if flag := playCmd.Flags().Lookup(name); flag != nil {
 			flag.Changed = false
 		}
@@ -62,7 +63,6 @@ func captureOutput(t *testing.T, fn func()) string {
 func captureOutputAndLogs(t *testing.T, fn func()) (stdout, logs string) {
 	t.Helper()
 
-	// Capture stdout
 	oldStdout := os.Stdout
 	rStdout, wStdout, err := os.Pipe()
 	if err != nil {
@@ -70,7 +70,6 @@ func captureOutputAndLogs(t *testing.T, fn func()) (stdout, logs string) {
 	}
 	os.Stdout = wStdout
 
-	// Capture log output
 	oldLogWriter := log.Writer()
 	logBuf := &bytes.Buffer{}
 	log.SetOutput(logBuf)
@@ -148,7 +147,7 @@ func TestPlayCommandRunESuccessResumesWithoutContext(t *testing.T) {
 	oldShuffle := shuffle
 	oldRefresh := spotify.RefreshAccessToken
 	oldNewClient := newSpotifyClient
-	oldAPIBase := spotify.APIBase
+	oldURLPlayer := spotify.URLPlayer
 	defer func() {
 		configPath = oldConfigPath
 		deviceID = oldDeviceID
@@ -160,7 +159,7 @@ func TestPlayCommandRunESuccessResumesWithoutContext(t *testing.T) {
 		shuffle = oldShuffle
 		spotify.RefreshAccessToken = oldRefresh
 		newSpotifyClient = oldNewClient
-		spotify.APIBase = oldAPIBase
+		spotify.URLPlayer = oldURLPlayer
 	}()
 
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
@@ -190,7 +189,7 @@ func TestPlayCommandRunESuccessResumesWithoutContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	spotify.APIBase = server.URL
+	spotify.URLPlayer = server.URL
 	newSpotifyClient = func(accessToken string) *spotify.Client {
 		c := spotify.NewClient(accessToken)
 		c.SetHTTPClient(server.Client())
@@ -206,14 +205,14 @@ func TestPlayCommandRunESuccessResumesWithoutContext(t *testing.T) {
 }
 
 func TestTransferCommandRunERequiresDevice(t *testing.T) {
-	oldTransferDeviceID := transferDeviceID
+	oldDeviceID := deviceID
 	oldTransferPlay := transferPlay
 	defer func() {
-		transferDeviceID = oldTransferDeviceID
+		deviceID = oldDeviceID
 		transferPlay = oldTransferPlay
 	}()
 
-	transferDeviceID = ""
+	deviceID = ""
 	transferPlay = false
 
 	err := transferCmd.RunE(transferCmd, nil)
@@ -224,22 +223,22 @@ func TestTransferCommandRunERequiresDevice(t *testing.T) {
 
 func TestTransferCommandRunESuccess(t *testing.T) {
 	oldConfigPath := configPath
-	oldTransferDeviceID := transferDeviceID
+	oldDeviceID := deviceID
 	oldTransferPlay := transferPlay
 	oldRefresh := spotify.RefreshAccessToken
 	oldNewClient := newSpotifyClient
-	oldAPIBase := spotify.APIBase
+	oldURLPlayer := spotify.URLPlayer
 	defer func() {
 		configPath = oldConfigPath
-		transferDeviceID = oldTransferDeviceID
+		deviceID = oldDeviceID
 		transferPlay = oldTransferPlay
 		spotify.RefreshAccessToken = oldRefresh
 		newSpotifyClient = oldNewClient
-		spotify.APIBase = oldAPIBase
+		spotify.URLPlayer = oldURLPlayer
 	}()
 
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	transferDeviceID = "device-1"
+	deviceID = "device-1"
 	transferPlay = true
 
 	spotify.RefreshAccessToken = func(clientB64, refreshToken string) (string, error) {
@@ -265,7 +264,7 @@ func TestTransferCommandRunESuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	spotify.APIBase = server.URL
+	spotify.URLPlayer = server.URL
 	newSpotifyClient = func(accessToken string) *spotify.Client {
 		c := spotify.NewClient(accessToken)
 		c.SetHTTPClient(server.Client())
@@ -284,14 +283,14 @@ func TestTransferCommandRunESuccess(t *testing.T) {
 }
 
 func TestVolumeCommandRunERequiresValidLevel(t *testing.T) {
-	oldVolumeDeviceID := volumeDeviceID
+	oldDeviceID := deviceID
 	oldVolumeLevel := volumeLevel
 	defer func() {
-		volumeDeviceID = oldVolumeDeviceID
+		deviceID = oldDeviceID
 		volumeLevel = oldVolumeLevel
 	}()
 
-	volumeDeviceID = "device-1"
+	deviceID = "device-1"
 	volumeLevel = 101
 
 	err := volumeCmd.RunE(volumeCmd, nil)
@@ -302,22 +301,22 @@ func TestVolumeCommandRunERequiresValidLevel(t *testing.T) {
 
 func TestVolumeCommandRunESuccess(t *testing.T) {
 	oldConfigPath := configPath
-	oldVolumeDeviceID := volumeDeviceID
+	oldDeviceID := deviceID
 	oldVolumeLevel := volumeLevel
 	oldRefresh := spotify.RefreshAccessToken
 	oldNewClient := newSpotifyClient
-	oldAPIBase := spotify.APIBase
+	oldURLPlayer := spotify.URLPlayer
 	defer func() {
 		configPath = oldConfigPath
-		volumeDeviceID = oldVolumeDeviceID
+		deviceID = oldDeviceID
 		volumeLevel = oldVolumeLevel
 		spotify.RefreshAccessToken = oldRefresh
 		newSpotifyClient = oldNewClient
-		spotify.APIBase = oldAPIBase
+		spotify.URLPlayer = oldURLPlayer
 	}()
 
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	volumeDeviceID = "device-1"
+	deviceID = "device-1"
 	volumeLevel = 42
 
 	spotify.RefreshAccessToken = func(clientB64, refreshToken string) (string, error) {
@@ -335,7 +334,7 @@ func TestVolumeCommandRunESuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	spotify.APIBase = server.URL
+	spotify.URLPlayer = server.URL
 	newSpotifyClient = func(accessToken string) *spotify.Client {
 		c := spotify.NewClient(accessToken)
 		c.SetHTTPClient(server.Client())

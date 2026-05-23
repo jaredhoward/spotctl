@@ -15,12 +15,12 @@ func TestDevicesCommandUpdateSavesNewName(t *testing.T) {
 	oldConfigPath := configPath
 	oldRefresh := spotify.RefreshAccessToken
 	oldNewClient := newSpotifyClient
-	oldAPIBase := spotify.APIBase
+	oldURLPlayer := spotify.URLPlayer
 	defer func() {
 		configPath = oldConfigPath
 		spotify.RefreshAccessToken = oldRefresh
 		newSpotifyClient = oldNewClient
-		spotify.APIBase = oldAPIBase
+		spotify.URLPlayer = oldURLPlayer
 		if f := devicesCmd.Flags().Lookup("update"); f != nil {
 			f.Changed = false
 			f.Value.Set("false")
@@ -44,7 +44,7 @@ func TestDevicesCommandUpdateSavesNewName(t *testing.T) {
 	}))
 	defer server.Close()
 
-	spotify.APIBase = server.URL
+	spotify.URLPlayer = server.URL
 	newSpotifyClient = func(accessToken string) *spotify.Client {
 		c := spotify.NewClient(accessToken)
 		c.SetHTTPClient(server.Client())
@@ -78,12 +78,12 @@ func TestDevicesCommandUpdateNoChange(t *testing.T) {
 	oldConfigPath := configPath
 	oldRefresh := spotify.RefreshAccessToken
 	oldNewClient := newSpotifyClient
-	oldAPIBase := spotify.APIBase
+	oldURLPlayer := spotify.URLPlayer
 	defer func() {
 		configPath = oldConfigPath
 		spotify.RefreshAccessToken = oldRefresh
 		newSpotifyClient = oldNewClient
-		spotify.APIBase = oldAPIBase
+		spotify.URLPlayer = oldURLPlayer
 		if f := devicesCmd.Flags().Lookup("update"); f != nil {
 			f.Changed = false
 			f.Value.Set("false")
@@ -106,7 +106,7 @@ func TestDevicesCommandUpdateNoChange(t *testing.T) {
 	}))
 	defer server.Close()
 
-	spotify.APIBase = server.URL
+	spotify.URLPlayer = server.URL
 	newSpotifyClient = func(accessToken string) *spotify.Client {
 		c := spotify.NewClient(accessToken)
 		c.SetHTTPClient(server.Client())

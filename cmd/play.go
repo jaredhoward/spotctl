@@ -12,7 +12,6 @@ import (
 
 var (
 	preset     string
-	deviceID   string
 	uri        string
 	playlistID string
 	trackID    string
@@ -43,13 +42,13 @@ func runPlay(cmd *cobra.Command, args []string) error {
 		p = found
 	}
 
-	// Resolve context URI from convenience flags
+	// Resolve context URI from convenience flags.
 	contextURI, err := resolveURI(cmd, uri, playlistID, trackID, albumID)
 	if err != nil {
 		return err
 	}
 
-	// Flags override preset values
+	// Flags override preset values.
 	if deviceID != "" {
 		p.DeviceID = deviceID
 	}
@@ -65,12 +64,10 @@ func runPlay(cmd *cobra.Command, args []string) error {
 	}
 
 	log.Println("Refreshing Spotify access token...")
-	accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
+	client, err := newClientFromConfig()
 	if err != nil {
-		return fmt.Errorf("failed to refresh token: %w", err)
+		return err
 	}
-
-	client := newSpotifyClient(accessToken)
 
 	if p.ContextURI != "" {
 		log.Printf("Starting playback of %s on device %s...", p.ContextURI, p.DeviceID)
@@ -144,7 +141,6 @@ func resolveURI(cmd *cobra.Command, uri, playlistID, trackID, albumID string) (s
 
 func init() {
 	playCmd.Flags().StringVar(&preset, "preset", "", "name of the preset to run")
-	playCmd.Flags().StringVar(&deviceID, "device", "", "Spotify device ID (overrides preset)")
 	playCmd.Flags().StringVar(&uri, "uri", "", "Spotify context URI (e.g. spotify:artist:xxx)")
 	playCmd.Flags().StringVar(&playlistID, "playlist", "", "Spotify playlist ID (convenience for --uri spotify:playlist:ID)")
 	playCmd.Flags().StringVar(&trackID, "track", "", "Spotify track ID (convenience for --uri spotify:track:ID)")

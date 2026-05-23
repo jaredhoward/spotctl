@@ -22,7 +22,7 @@ type DevicesResponse struct {
 
 func (c *Client) GetDevices() ([]Device, error) {
 	req, err := http.NewRequest(http.MethodGet,
-		fmt.Sprintf("%s/devices", APIBase),
+		fmt.Sprintf("%s/devices", URLPlayer),
 		nil,
 	)
 	if err != nil {

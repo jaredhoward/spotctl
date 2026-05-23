@@ -25,8 +25,8 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestGetCurrentPlaybackSuccess(t *testing.T) {
-	oldAPIBase := APIBase
-	t.Cleanup(func() { APIBase = oldAPIBase })
+	oldURLPlayer := URLPlayer
+	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/" {
@@ -46,7 +46,7 @@ func TestGetCurrentPlaybackSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	APIBase = server.URL
+	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
 	playback, err := client.GetCurrentPlayback()
 	if err != nil {
@@ -58,15 +58,15 @@ func TestGetCurrentPlaybackSuccess(t *testing.T) {
 }
 
 func TestGetCurrentPlaybackNoContent(t *testing.T) {
-	oldAPIBase := APIBase
-	t.Cleanup(func() { APIBase = oldAPIBase })
+	oldURLPlayer := URLPlayer
+	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 
-	APIBase = server.URL
+	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
 	playback, err := client.GetCurrentPlayback()
 	if err != nil {
@@ -78,15 +78,15 @@ func TestGetCurrentPlaybackNoContent(t *testing.T) {
 }
 
 func TestGetCurrentPlaybackErrorStatus(t *testing.T) {
-	oldAPIBase := APIBase
-	t.Cleanup(func() { APIBase = oldAPIBase })
+	oldURLPlayer := URLPlayer
+	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 
-	APIBase = server.URL
+	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
 	if _, err := client.GetCurrentPlayback(); err == nil {
 		t.Fatal("expected error for non-200 response")
@@ -94,8 +94,8 @@ func TestGetCurrentPlaybackErrorStatus(t *testing.T) {
 }
 
 func TestGetCurrentPlaybackDecodeError(t *testing.T) {
-	oldAPIBase := APIBase
-	t.Cleanup(func() { APIBase = oldAPIBase })
+	oldURLPlayer := URLPlayer
+	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -104,7 +104,7 @@ func TestGetCurrentPlaybackDecodeError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	APIBase = server.URL
+	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
 	if _, err := client.GetCurrentPlayback(); err == nil {
 		t.Fatal("expected decode error")

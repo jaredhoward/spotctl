@@ -9,8 +9,8 @@ import (
 )
 
 func TestPlayWithAndWithoutContext(t *testing.T) {
-	oldAPIBase := APIBase
-	t.Cleanup(func() { APIBase = oldAPIBase })
+	oldURLPlayer := URLPlayer
+	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
 	called := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +48,7 @@ func TestPlayWithAndWithoutContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	APIBase = server.URL
+	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
 	if err := client.Play("device", "spotify:track:abc"); err != nil {
 		t.Fatal(err)
@@ -59,8 +59,8 @@ func TestPlayWithAndWithoutContext(t *testing.T) {
 }
 
 func TestTransferPlayback(t *testing.T) {
-	oldAPIBase := APIBase
-	t.Cleanup(func() { APIBase = oldAPIBase })
+	oldURLPlayer := URLPlayer
+	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/" {
@@ -81,7 +81,7 @@ func TestTransferPlayback(t *testing.T) {
 	}))
 	defer server.Close()
 
-	APIBase = server.URL
+	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
 	if err := client.TransferPlayback([]string{"device"}, true); err != nil {
 		t.Fatal(err)
@@ -89,8 +89,8 @@ func TestTransferPlayback(t *testing.T) {
 }
 
 func TestVolumePauseNextPreviousShuffle(t *testing.T) {
-	oldAPIBase := APIBase
-	t.Cleanup(func() { APIBase = oldAPIBase })
+	oldURLPlayer := URLPlayer
+	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
 	cases := []struct {
 		name    string
@@ -154,7 +154,7 @@ func TestVolumePauseNextPreviousShuffle(t *testing.T) {
 			}))
 			defer server.Close()
 
-			APIBase = server.URL
+			URLPlayer = server.URL
 			client := &Client{accessToken: "t", httpClient: server.Client()}
 			if err := tc.invoke(client); err != nil {
 				t.Fatal(err)
@@ -164,17 +164,17 @@ func TestVolumePauseNextPreviousShuffle(t *testing.T) {
 }
 
 func TestDoExpect204Error(t *testing.T) {
-	oldAPIBase := APIBase
-	t.Cleanup(func() { APIBase = oldAPIBase })
+	oldURLPlayer := URLPlayer
+	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer server.Close()
 
-	APIBase = server.URL
+	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/play?device_id=device", APIBase), nil)
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/play?device_id=device", URLPlayer), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

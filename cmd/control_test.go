@@ -8,7 +8,7 @@ import (
 	"github.com/jaredhoward/spotctl/spotify"
 )
 
-func TestExecutePlaybackActionUsesConfigAndTokenRefresh(t *testing.T) {
+func TestWithPlayerClientUsesConfigAndTokenRefresh(t *testing.T) {
 	oldConfigPath := configPath
 	oldRefresh := spotify.RefreshAccessToken
 	oldNewClient := newSpotifyClient
@@ -47,7 +47,7 @@ func TestExecutePlaybackActionUsesConfigAndTokenRefresh(t *testing.T) {
 	}
 
 	deviceID = "device-1"
-	err := executePlaybackAction("pause", func(c *spotify.Client, id string) error {
+	err := withPlayerClient(func(c *spotify.Client, id string) error {
 		if id != deviceID {
 			t.Fatalf("expected device id %q, got %q", deviceID, id)
 		}
@@ -58,12 +58,42 @@ func TestExecutePlaybackActionUsesConfigAndTokenRefresh(t *testing.T) {
 	}
 }
 
-func TestExecutePlaybackActionMissingDevice(t *testing.T) {
+func TestWithPlayerClientMissingDevice(t *testing.T) {
 	oldDeviceID := deviceID
 	deviceID = ""
 	defer func() { deviceID = oldDeviceID }()
 
-	if err := executePlaybackAction("pause", func(c *spotify.Client, id string) error { return nil }); err == nil {
+	if err := withPlayerClient(func(c *spotify.Client, id string) error { return nil }); err == nil {
 		t.Fatal("expected error when device id is missing")
+	}
+}
+
+func TestExecutePlaybackActionPrintsSuccess(t *testing.T) {
+	oldConfigPath := configPath
+	oldDeviceID := deviceID
+	oldRefresh := spotify.RefreshAccessToken
+	oldNewClient := newSpotifyClient
+	defer func() {
+		configPath = oldConfigPath
+		deviceID = oldDeviceID
+		spotify.RefreshAccessToken = oldRefresh
+		newSpotifyClient = oldNewClient
+	}()
+
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	deviceID = "device-1"
+	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
+	newSpotifyClient = func(_ string) *spotify.Client { return &spotify.Client{} }
+
+	output := captureOutput(t, func() {
+		if err := executePlaybackAction("pause", func(c *spotify.Client, id string) error {
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if output != "Pause on device device-1\n" {
+		t.Fatalf("unexpected output: %q", output)
 	}
 }
