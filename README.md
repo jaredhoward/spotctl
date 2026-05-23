@@ -20,7 +20,7 @@ A Spotify Connect controller CLI, built in Go.
 git clone git@github.com:jaredhoward/spotctl.git
 cd spotctl
 go mod tidy
-go build -o spotctl .
+make build
 ```
 
 ### Cross-compile for Linux x86_64 (e.g. Home Assistant Green)
@@ -87,7 +87,6 @@ device_names:
 ```
 
 After that, `spotctl devices` will use the stored name when the Spotify API returns an empty name for an inactive device.
-
 
 ### 3. Test
 
@@ -223,21 +222,21 @@ mode: restart
 sequence:
   - action: media_player.volume_set
     target:
-      entity_id: media_player.master_bedroom_bed_speaker
+      entity_id: media_player.master_bedroom_speaker
     data:
       volume_level: 0
   - action: media_player.media_stop
     target:
-      entity_id: media_player.master_bedroom_bed_speaker
+      entity_id: media_player.master_bedroom_speaker
     continue_on_error: true
   - action: shell_command.spotify_sleep
     continue_on_error: false
-  - wait_template: "{{ is_state('media_player.master_bedroom_bed_speaker', 'playing') }}"
+  - wait_template: "{{ is_state('media_player.master_bedroom_speaker', 'playing') }}"
     timeout: "00:00:30"
     continue_on_timeout: true
   - action: media_player.volume_set
     target:
-      entity_id: media_player.master_bedroom_bed_speaker
+      entity_id: media_player.master_bedroom_speaker
     data:
       volume_level: 0.35
 ```
