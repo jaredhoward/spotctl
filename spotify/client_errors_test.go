@@ -23,7 +23,7 @@ func TestShuffleErrorStatus(t *testing.T) {
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
 	if err := client.Shuffle("device"); err == nil {
-		t.Fatal("expected error for non-204/200 shuffle response")
+		t.Fatal("expected error for non-2xx shuffle response")
 	}
 }
 

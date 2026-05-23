@@ -48,7 +48,7 @@ func (c *Client) Play(deviceID, playlistURI string) error {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	return c.doExpect204(req, "play")
+	return c.doExpectSuccess(req, "play")
 }
 
 func (c *Client) TransferPlayback(deviceIDs []string, play bool) error {
@@ -70,7 +70,7 @@ func (c *Client) TransferPlayback(deviceIDs []string, play bool) error {
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	return c.doExpect204(req, "transfer playback")
+	return c.doExpectSuccess(req, "transfer playback")
 }
 
 func (c *Client) Shuffle(deviceID string) error {
@@ -83,7 +83,7 @@ func (c *Client) Shuffle(deviceID string) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 
-	return c.doExpect204(req, "shuffle")
+	return c.doExpectSuccess(req, "shuffle")
 }
 
 func (c *Client) Pause(deviceID string) error {
@@ -96,7 +96,7 @@ func (c *Client) Pause(deviceID string) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 
-	return c.doExpect204(req, "pause")
+	return c.doExpectSuccess(req, "pause")
 }
 
 func (c *Client) Next(deviceID string) error {
@@ -109,7 +109,7 @@ func (c *Client) Next(deviceID string) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 
-	return c.doExpect204(req, "next")
+	return c.doExpectSuccess(req, "next")
 }
 
 func (c *Client) Previous(deviceID string) error {
@@ -122,7 +122,7 @@ func (c *Client) Previous(deviceID string) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 
-	return c.doExpect204(req, "previous")
+	return c.doExpectSuccess(req, "previous")
 }
 
 func (c *Client) SetVolume(deviceID string, volumePercent int) error {
@@ -135,17 +135,19 @@ func (c *Client) SetVolume(deviceID string, volumePercent int) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 
-	return c.doExpect204(req, "set volume")
+	return c.doExpectSuccess(req, "set volume")
 }
 
-func (c *Client) doExpect204(req *http.Request, action string) error {
+// doExpectSuccess executes req and returns nil if the response status is 2xx,
+// or a descriptive error otherwise.
+func (c *Client) doExpectSuccess(req *http.Request, action string) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("%s request failed: %w", action, err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("%s returned unexpected status %d: %s", action, resp.StatusCode, strings.TrimSpace(string(body)))
 	}

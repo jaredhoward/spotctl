@@ -163,7 +163,7 @@ func TestVolumePauseNextPreviousShuffle(t *testing.T) {
 	}
 }
 
-func TestDoExpect204Error(t *testing.T) {
+func TestDoExpectSuccessError(t *testing.T) {
 	oldURLPlayer := URLPlayer
 	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
@@ -179,7 +179,7 @@ func TestDoExpect204Error(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Authorization", "Bearer t")
-	if err := client.doExpect204(req, "play"); err == nil {
-		t.Fatal("expected error for non-204 response")
+	if err := client.doExpectSuccess(req, "play"); err == nil {
+		t.Fatal("expected error for non-2xx response")
 	}
 }
