@@ -107,14 +107,30 @@ func TestLoadAndSaveRoundTrip(t *testing.T) {
 	defer os.Remove(f.Name())
 	f.Close()
 
+	level := 60
 	original := &Config{
 		ClientID:             "id",
 		ClientSecret:         "secret",
 		RefreshToken:         "refresh",
 		RedirectURI:          "https://example.com/callback",
 		PlaybackPollInterval: "1s",
-		Presets: map[string]Preset{
-			"sleep": {DeviceID: "dev1", ContextURI: "spotify:playlist:abc", Shuffle: true},
+		Sets: map[string]Set{
+			"sleep": {
+				Commands: []Command{
+					{
+						Action: "play",
+						Params: CommandParams{
+							DeviceID: "dev1",
+							URI:      "spotify:playlist:abc",
+						},
+						Confirm: true,
+					},
+					{
+						Action: "volume",
+						Params: CommandParams{DeviceID: "dev1", Level: &level},
+					},
+				},
+			},
 		},
 		DeviceNames: map[string]string{"dev1": "Bedroom Speaker"},
 	}
@@ -134,8 +150,15 @@ func TestLoadAndSaveRoundTrip(t *testing.T) {
 	if loaded.PlaybackPollInterval != original.PlaybackPollInterval {
 		t.Errorf("PlaybackPollInterval mismatch: got %q", loaded.PlaybackPollInterval)
 	}
-	if loaded.Presets["sleep"].DeviceID != "dev1" {
-		t.Errorf("preset not preserved: %+v", loaded.Presets)
+	sleep, ok := loaded.Sets["sleep"]
+	if !ok {
+		t.Fatal("set 'sleep' not preserved after round-trip")
+	}
+	if len(sleep.Commands) != 2 {
+		t.Errorf("expected 2 commands in sleep set, got %d", len(sleep.Commands))
+	}
+	if sleep.Commands[0].Params.DeviceID != "dev1" {
+		t.Errorf("device_id not preserved: %+v", sleep.Commands[0].Params)
 	}
 	if loaded.DeviceNames["dev1"] != "Bedroom Speaker" {
 		t.Errorf("device name not preserved: %+v", loaded.DeviceNames)

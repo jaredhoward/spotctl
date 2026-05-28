@@ -24,10 +24,10 @@ var setupCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		reader := bufio.NewReader(os.Stdin)
 
-		fmt.Println("=== ha-spotify setup ===")
+		fmt.Println("=== setup ===")
 		fmt.Println()
 
-		// Load existing config if present to preserve presets and pre-fill prompts
+		// Load existing config if present to preserve sets and pre-fill prompts.
 		existing, _ := config.Load(configPath)
 
 		clientID := promptWithDefault(reader, "Spotify Client ID", existingValue(existing, func(c *config.Config) string { return c.ClientID }))
@@ -43,9 +43,9 @@ var setupCmd = &cobra.Command{
 			return fmt.Errorf("OAuth flow failed: %w", err)
 		}
 
-		presets := map[string]config.Preset{}
-		if existing != nil && existing.Presets != nil {
-			presets = existing.Presets
+		sets := map[string]config.Set{}
+		if existing != nil && existing.Sets != nil {
+			sets = existing.Sets
 		}
 
 		deviceNames := map[string]string{}
@@ -58,7 +58,7 @@ var setupCmd = &cobra.Command{
 			ClientSecret: clientSecret,
 			RefreshToken: refreshToken,
 			RedirectURI:  redirectURI,
-			Presets:      presets,
+			Sets:         sets,
 			DeviceNames:  deviceNames,
 		}
 
@@ -67,7 +67,7 @@ var setupCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\n✅ Config saved to %s\n", configPath)
-		fmt.Println("Add your presets to the config file to get started.")
+		fmt.Println("Add your sets to the config file to get started.")
 		return nil
 	},
 }

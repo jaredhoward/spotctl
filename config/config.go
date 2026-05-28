@@ -11,21 +11,15 @@ import (
 
 const DefaultConfigPath = "./config.yaml"
 
-type Preset struct {
-	DeviceID   string `yaml:"device_id"`
-	ContextURI string `yaml:"context_uri"`
-	Shuffle    bool   `yaml:"shuffle"`
-}
-
 const DefaultPlaybackPollInterval = 500 * time.Millisecond
 
 type Config struct {
-	ClientID             string            `yaml:"client_id"`
-	ClientSecret         string            `yaml:"client_secret"`
-	RefreshToken         string            `yaml:"refresh_token"`
-	RedirectURI          string            `yaml:"redirect_uri"`
-	PlaybackPollInterval string            `yaml:"playback_poll_interval,omitempty"`
-	Presets              map[string]Preset `yaml:"presets"`
+	ClientID             string          `yaml:"client_id"`
+	ClientSecret         string          `yaml:"client_secret"`
+	RefreshToken         string          `yaml:"refresh_token"`
+	RedirectURI          string          `yaml:"redirect_uri"`
+	PlaybackPollInterval string          `yaml:"playback_poll_interval,omitempty"`
+	Sets                 map[string]Set  `yaml:"sets,omitempty"`
 	DeviceNames          map[string]string `yaml:"device_names"`
 }
 

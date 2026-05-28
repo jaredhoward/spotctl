@@ -4,7 +4,7 @@ A Spotify Connect controller CLI, built in Go.
 
 ## Overview
 
-`spotctl` controls Spotify playback via the Spotify Web API. It is designed to be called from automation tools like Home Assistant `shell_command` entries, enabling reliable cold-start playback on Spotify Connect devices without relying on third-party integrations.
+`spotctl` controls Spotify playback via the Spotify Web API. While `spotctl` is a stand-alone application, it is designed to be called from automation tools like Home Assistant `shell_command` entries, enabling reliable cold-start playback on Spotify Connect devices without relying on third-party integrations.
 
 ## Requirements
 
@@ -44,21 +44,36 @@ This will prompt for:
 
 It will then walk through the OAuth flow and generate a `config.yaml` file.
 
-### 2. Add presets to `config.yaml`
-
-Presets are optional but convenient for frequently used device and context combinations.
 
 ```yaml
 client_id: YOUR_CLIENT_ID
 client_secret: YOUR_CLIENT_SECRET
 refresh_token: YOUR_REFRESH_TOKEN
 redirect_uri: https://your-redirect-uri
+```
 
-presets:
-  sleep:
-    device_id: YOUR_SPOTIFY_DEVICE_ID
-    context_uri: spotify:playlist:YOUR_PLAYLIST_ID
-    shuffle: true
+### 2. Add sets to `config.yaml`
+
+Sets are named sequences of Spotify commands. A set can be as simple as a
+single play command or as complex as a multi-step routine with confirmation
+and error handling. Run a set with `spotctl run <name>`.
+
+```yaml
+sets:
+  sleep_shuffle:
+    device_id: DEVICE_ID
+    commands:
+      - action: play
+        params:
+          uri: spotify:playlist:PLAYLIST_ID
+        confirm: true
+        timeout: 20s
+        on_timeout: fail
+      - action: shuffle
+        params:
+          enabled: true
+        confirm: true
+        timeout: 5s
 ```
 
 To find your device ID, use the `devices` command:
@@ -67,74 +82,108 @@ To find your device ID, use the `devices` command:
 spotctl devices --config ./config.yaml
 ```
 
-Device name persistence
------------------------
+#### Set-level fields
 
-Some Spotify Connect devices stop reporting a friendly `name` when they become inactive. `spotctl` can persist device names you observe so the `devices` output remains readable even when Spotify omits the name.
+| Field | Default | Description |
+|---|---|---|
+| `device_id` | — | Applies to every command in the set. A command can override it with its own `params.device_id`. Omitting at both levels targets the currently active Spotify device. |
+| `on_error` | `continue` | Default error policy for all commands in the set. |
+| `on_timeout` | `continue` | Default timeout policy for all commands in the set. |
 
-- To discover and save device names, run:
+#### Commands
+
+Each command in a set has:
+
+| Field | Default | Description |
+|---|---|---|
+| `action` | *(required)* | `play`, `pause`, `next`, `previous`, `shuffle`, `volume`, `transfer`, `run_set` |
+| `params` | — | Action-specific parameters (see below) |
+| `confirm` | `false` | Poll Spotify state until the action is reflected before continuing |
+| `timeout` | `15s` | Overall deadline for the command including confirmation polling |
+| `on_error` | set-level or `continue` | `fail` \| `continue` \| `skip_remaining` |
+| `on_timeout` | set-level or `continue` | `fail` \| `continue` \| `skip_remaining` |
+
+#### Params reference
+
+| Action | Required params | Optional params |
+|---|---|---|
+| `play` | — | `device_id`, `uri`, `playlist`, `track`, `album` |
+| `pause` | — | `device_id` |
+| `next` | — | `device_id` |
+| `previous` | — | `device_id` |
+| `shuffle` | — | `device_id`, `enabled` (default `true`) |
+| `volume` | `level` | `device_id` |
+| `transfer` | — | `device_id`, `play` (default `false`) |
+| `run_set` | `set` | — |
+
+For `play`, use one of `uri`, `playlist`, `track`, or `album` — not more than
+one. `playlist`, `track`, and `album` are shorthand for the corresponding
+`spotify:TYPE:ID` URI.
+
+### 3. Discover and persist device names
+
+Some Spotify Connect devices stop reporting a friendly name when they become
+inactive. `spotctl` can persist device names so the `devices` output remains
+readable even when Spotify omits the name.
 
 ```bash
 spotctl devices --update --config ./config.yaml
 ```
 
-This will add (or update) a `device_names` mapping in your `config.yaml` like:
+This adds or updates a `device_names` mapping in `config.yaml`:
 
 ```yaml
 device_names:
-  2cd72806a72944a01d1a70e77fb5de1f0b2a5ac8: "Living Room Speaker"
+  a70e...: "Living Room Speaker"
   7b9a...: "Kitchen Echo"
 ```
 
-After that, `spotctl devices` will use the stored name when the Spotify API returns an empty name for an inactive device.
+### 4. Test
 
-### 3. Test
-
-Using a preset:
+Run a set:
 ```bash
-spotctl play --preset sleep --config ./config.yaml
+spotctl run sleep_shuffle --config ./config.yaml
 ```
 
-Using the full context URI directly:
+One-off playback commands:
 ```bash
-spotctl play --device YOUR_DEVICE_ID --uri spotify:playlist:YOUR_PLAYLIST_ID --config ./config.yaml
+spotctl play --uri spotify:playlist:PLAYLIST_ID --config ./config.yaml
+spotctl play --device DEVICE_ID --playlist PLAYLIST_ID --config ./config.yaml
+spotctl play --device DEVICE_ID --track TRACK_ID --config ./config.yaml
+spotctl play --device DEVICE_ID --album ALBUM_ID --config ./config.yaml
 ```
 
-Using convenience flags:
+Playback control:
 ```bash
-spotctl play --device YOUR_DEVICE_ID --playlist YOUR_PLAYLIST_ID --config ./config.yaml
-spotctl play --device YOUR_DEVICE_ID --track YOUR_TRACK_ID --config ./config.yaml
-spotctl play --device YOUR_DEVICE_ID --album YOUR_ALBUM_ID --config ./config.yaml
+spotctl pause --config ./config.yaml
+spotctl pause --device DEVICE_ID --config ./config.yaml
+spotctl next --device DEVICE_ID --config ./config.yaml
+spotctl previous --device DEVICE_ID --config ./config.yaml
+spotctl volume --device DEVICE_ID --level 50 --config ./config.yaml
+spotctl transfer --device DEVICE_ID --play --config ./config.yaml
 ```
 
-Flags override preset values when both are provided:
-```bash
-spotctl play --preset sleep --device OTHER_DEVICE_ID --config ./config.yaml
-```
+## CLI Commands
 
-Playback control examples:
-```bash
-spotctl pause --device YOUR_DEVICE_ID --config ./config.yaml
-spotctl next --device YOUR_DEVICE_ID --config ./config.yaml
-spotctl previous --device YOUR_DEVICE_ID --config ./config.yaml
-spotctl volume --device YOUR_DEVICE_ID --level 50 --config ./config.yaml
-spotctl transfer --device YOUR_DEVICE_ID --play --config ./config.yaml
-```
-
-## Commands
-
-| Command | Description |
-|---|---|
-| `spotctl setup` | Interactive setup and OAuth flow |
-| `spotctl play` | Start Spotify playback (`run` is also supported as an alias) |
-| `spotctl transfer` | Transfer playback to a Spotify Connect device |
-| `spotctl pause` | Pause Spotify playback |
-| `spotctl next` | Skip to the next track |
-| `spotctl previous` | Return to the previous track |
-| `spotctl volume` | Set Spotify playback volume |
-| `spotctl devices` | List available Spotify Connect devices |
-| `spotctl status` | Show current Spotify playback status |
-| `spotctl version` | Print the version |
+<table>
+  <thead>
+    <tr><th>Command</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>spotctl devices</code></td><td>List available Spotify Connect devices</td></tr>
+    <tr><td><code>spotctl setup</code></td><td>Interactive setup and OAuth flow</td></tr>
+    <tr><td><code>spotctl status</code></td><td>Show current Spotify playback status</td></tr>
+    <tr><td><code>spotctl version</code></td><td>Print the version</td></tr>
+    <tr><th colspan="2" align="center">Playback Commands</th></tr>
+    <tr><td><code>spotctl run <set></code></td><td>Run a named set of commands</td></tr>
+    <tr><td><code>spotctl play</code></td><td>Start or resume Spotify playback</td></tr>
+    <tr><td><code>spotctl pause</code></td><td>Pause Spotify playback</td></tr>
+    <tr><td><code>spotctl next</code></td><td>Skip to the next track</td></tr>
+    <tr><td><code>spotctl previous</code></td><td>Return to the previous track</td></tr>
+    <tr><td><code>spotctl transfer</code></td><td>Transfer playback to a Spotify Connect device</td></tr>
+    <tr><td><code>spotctl volume</code></td><td>Set Spotify playback volume</td></tr>
+  </tbody>
+</table>
 
 ## Flags
 
@@ -148,26 +197,50 @@ spotctl transfer --device YOUR_DEVICE_ID --play --config ./config.yaml
 
 | Flag | Description |
 |---|---|
-| `--preset <name>` | Load a preset from config as a base |
-| `--device <id>` | Spotify device ID (overrides preset) |
-| `--uri <uri>` | Spotify context URI, e.g. `spotify:artist:xxx` (overrides preset) |
-| `--playlist <id>` | Playlist ID, convenience for `--uri spotify:playlist:ID` |
-| `--track <id>` | Track ID, convenience for `--uri spotify:track:ID` |
-| `--album <id>` | Album ID, convenience for `--uri spotify:album:ID` |
-| `--shuffle` | Enable shuffle (overrides preset) |
+| `<set>` | Name of the set to run (required) |
+
+### `play`
+
+| Flag | Description |
+|---|---|
+| `--device <id>` | Spotify device ID (omit to target active device) |
+| `--uri <uri>` | Spotify context URI, e.g. `spotify:playlist:xxx` |
+| `--playlist <id>` | Playlist ID — shorthand for `--uri spotify:playlist:ID` |
+| `--track <id>` | Track ID — shorthand for `--uri spotify:track:ID` |
+| `--album <id>` | Album ID — shorthand for `--uri spotify:album:ID` |
 
 Only one of `--uri`, `--playlist`, `--track`, or `--album` may be specified at a time.
 
-### `transfer` vs. `play` Without a URI
+### `pause` / `next` / `previous`
 
-These two commands can look similar when no new track or context is intended:
+| Flag | Description |
+|---|---|
+| `--device <id>` | Spotify device ID (omit to target active device) |
+
+### `volume`
+
+| Flag | Description |
+|---|---|
+| `--device <id>` | Spotify device ID (omit to target active device) |
+| `--level <0-100>` | Volume level |
+
+### `transfer`
+
+| Flag | Description |
+|---|---|
+| `--device <id>` | Spotify device ID to transfer playback to (required) |
+| `--play` | Start playback immediately after transfer |
+
+### `transfer` vs. `play` without a URI
+
+These two commands can look similar when no new context is intended:
 
 ```bash
 # Transfer the active session to a device (session migration)
-spotctl transfer --device YOUR_DEVICE_ID --play --config ./config.yaml
+spotctl transfer --device DEVICE_ID --play --config ./config.yaml
 
 # Resume playback on a device (no URI supplied)
-spotctl play --device YOUR_DEVICE_ID --config ./config.yaml
+spotctl play --device DEVICE_ID --config ./config.yaml
 ```
 
 They map to different Spotify API calls and behave differently:
@@ -175,16 +248,13 @@ They map to different Spotify API calls and behave differently:
 | | `transfer` | `play` (no URI) |
 |---|---|---|
 | API call | `PUT /me/player` | `PUT /me/player/play` |
-| Carries over queue | Yes | No — uses the device's own last-known context |
+| Carries over queue | Yes | No |
 | Preserves track position | Yes | No |
 | Preserves shuffle/repeat | Yes | No |
-| Intended use | Moving an active session between devices | Resuming whatever that device was last doing |
-
-`transfer` is a session migration — Spotify treats it as the listener moving from one device to another mid-stream. `play` without a URI is a resume signal sent to a specific device, and its behaviour depends on whatever Spotify last remembers for that device, which can be inconsistent across device types.
+| Intended use | Moving an active session between devices | Resuming a device's last context |
 
 - Use `spotctl transfer --play` when handing off an active session from one device to another.
-- Use `spotctl play --uri` (or `--preset`) when starting something specific on a device.
-- Avoid `spotctl play` with no URI and no preset — it is the least predictable path.
+- Use `spotctl play --uri` (or a set) when starting something specific on a device.
 
 ## Re-authentication
 
@@ -194,7 +264,7 @@ When your refresh token expires, re-run setup:
 spotctl setup --config ./config.yaml
 ```
 
-Existing presets will be preserved and credentials pre-filled for easy updating.
+Existing sets and device names will be preserved and credentials pre-filled for easy updating.
 
 ## Home Assistant Integration
 
@@ -211,10 +281,15 @@ Copy `config.yaml` to `/config/scripts/config.yaml` on your HA instance.
 ### `shell_commands.yaml`
 
 ```yaml
-spotify_sleep: /config/scripts/spotctl play --preset sleep --config /config/scripts/config.yaml
+spotctl_sleep: /config/scripts/spotctl run sleep_shuffle --config /config/scripts/config.yaml
 ```
 
 ### HA Script
+
+When `confirm: true` is set on a play command in a set, `spotctl` blocks until
+Spotify confirms playback has started before returning. This means the
+`shell_command` step in HA completes only after music is actually playing —
+no `wait_template` needed.
 
 ```yaml
 alias: Sleep Playlist
@@ -229,11 +304,10 @@ sequence:
     target:
       entity_id: media_player.master_bedroom_speaker
     continue_on_error: true
-  - action: shell_command.spotify_sleep
+  - action: shell_command.spotctl_sleep
+    # spotctl blocks here until Spotify confirms playback has started
+    # (because confirm: true is set on the play command in the set).
     continue_on_error: false
-  - wait_template: "{{ is_state('media_player.master_bedroom_speaker', 'playing') }}"
-    timeout: "00:00:30"
-    continue_on_timeout: true
   - action: media_player.volume_set
     target:
       entity_id: media_player.master_bedroom_speaker
@@ -241,7 +315,21 @@ sequence:
       volume_level: 0.35
 ```
 
-### Volume Control: `spotctl` vs. Home Assistant Direct
+If you need HA to perform an action only after its own media player integration
+reports the device as playing (e.g. for volume control via a native HA
+integration rather than `spotctl`), you can still add a `wait_template` after
+the `shell_command` step:
+
+```yaml
+  - wait_template: "{{ is_state('media_player.master_bedroom_speaker', 'playing') }}"
+    timeout: "00:00:10"
+    continue_on_timeout: true
+```
+
+The timeout can be short here — `spotctl` has already confirmed Spotify-side
+playback, so HA's integration usually catches up within a second or two.
+
+### Volume Control: `spotctl` vs. Home Assistant direct
 
 When you set volume via `spotctl`, the signal chain is:
 
@@ -249,26 +337,21 @@ When you set volume via `spotctl`, the signal chain is:
 spotctl → Spotify API → Spotify Connect → device
 ```
 
-This works well for standalone use and for devices that Home Assistant cannot control directly (a phone, a laptop, or a third-party Spotify Connect receiver with no HA integration). However, when HA already has a native integration for the device — Cast, Sonos, AirPlay, etc. — letting HA own volume is the better choice:
+This works well for devices that Home Assistant cannot control directly. When
+HA already has a native integration for the device — Cast, Sonos, AirPlay, etc.
+— letting HA own volume is usually the better choice:
 
 - Fewer hops and lower latency (local network vs. cloud round-trip)
 - Continues to work even if Spotify temporarily loses its connection to the device
-- Volume is a device concern, not a playback concern; keeping it with HA is the cleaner model
-- Avoids unintentionally affecting non-Spotify audio sources on the same device
+- Volume is a device concern, not a playback concern
 
-The exception is when you specifically want volume tied to the Spotify session — for example, to interact correctly with Spotify's normalization or cross-fade — or when HA simply has no path to the device.
-
-**Use `spotctl volume` when HA cannot reach the device directly:**
-
-```bash
-spotctl volume --device YOUR_DEVICE_ID --level 50 --config /config/scripts/config.yaml
-```
-
-**Otherwise, prefer HA's own volume action** (shown in the HA Script example above).
+**Use `spotctl volume` when HA cannot reach the device directly.**
+Otherwise, prefer HA's own volume action (shown in the script example above).
 
 ## Security
 
-`config.yaml` contains sensitive credentials and is excluded from version control via `.gitignore`. Never commit it to a public repository.
+`config.yaml` contains sensitive credentials and is excluded from version
+control via `.gitignore`. Never commit it to a public repository.
 
 ## Local Development
 

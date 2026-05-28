@@ -3,10 +3,11 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/jaredhoward/spotctl/spotify"
+	"github.com/jaredhoward/spotctl/config"
 	"github.com/spf13/cobra"
 )
 
+var transferDeviceID string
 var transferPlay bool
 
 var transferCmd = &cobra.Command{
@@ -16,21 +17,28 @@ var transferCmd = &cobra.Command{
 }
 
 func runTransfer(cmd *cobra.Command, args []string) error {
-	play := transferPlay
-	return withPlayerClient(func(c *spotify.Client, id string) error {
-		if err := c.TransferPlayback([]string{id}, play); err != nil {
-			return fmt.Errorf("failed to transfer playback: %w", err)
-		}
-		if play {
-			fmt.Printf("Transferred and started playback to device %s\n", id)
-		} else {
-			fmt.Printf("Transferred playback to device %s\n", id)
-		}
-		return nil
-	})
+	if transferDeviceID == "" {
+		return fmt.Errorf("transfer requires --device")
+	}
+
+	client, err := verbClient()
+	if err != nil {
+		return err
+	}
+
+	p := config.CommandParams{
+		DeviceID: transferDeviceID,
+		Play:     &transferPlay,
+	}
+
+	if err := dispatchAction(p, "transfer", client, nil, 0); err != nil {
+		return fmt.Errorf("transfer failed: %w", err)
+	}
+	return nil
 }
 
 func init() {
+	transferCmd.Flags().StringVar(&transferDeviceID, "device", "", "Spotify device ID to transfer playback to (required)")
 	transferCmd.Flags().BoolVar(&transferPlay, "play", false, "start playback after transfer")
 	rootCmd.AddCommand(transferCmd)
 }

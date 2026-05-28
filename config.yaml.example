@@ -3,8 +3,91 @@ client_secret: YOUR_CLIENT_SECRET
 refresh_token: YOUR_REFRESH_TOKEN
 redirect_uri: https://your-redirect-uri
 
-presets:
-  sleep:
-    device_id: YOUR_SPOTIFY_DEVICE_ID
-    context_uri: spotify:playlist:YOUR_PLAYLIST_ID
-    shuffle: true
+# Optional: override how often spotctl polls Spotify to confirm state changes.
+# playback_poll_interval: 500ms
+
+# Sets are named sequences of commands. Run with: spotctl run <name>
+#
+# Each command has:
+#   action     - what to do: play, pause, next, previous, shuffle, volume,
+#                transfer, run_set
+#   params     - action-specific parameters (see examples below)
+#   confirm    - (default: false) poll Spotify state until the action is
+#                reflected before moving on
+#   timeout    - (default: 15s) overall command deadline including confirmation
+#   on_error   - (default: set-level or "continue") fail | continue | skip_remaining
+#   on_timeout - same options as on_error
+#
+# Set-level device_id applies to all commands that don't define their own.
+# Set-level on_error / on_timeout set the default for all commands within.
+
+sets:
+  # Play a playlist with shuffle on a specific device, with confirmation.
+  random_vibes:
+    device_id: SPOTIFY_DEVICE_ID
+    commands:
+      - action: play
+        params:
+          uri: spotify:playlist:PLAYLIST_ID
+        confirm: true
+        timeout: 20s
+        on_timeout: fail
+
+      - action: shuffle
+        params:
+          enabled: true
+        confirm: true
+        timeout: 5s
+
+  # Play a focused playlist at a set volume, without shuffle.
+  focus_mode:
+    device_id: SPOTIFY_DEVICE_ID
+    on_error: continue
+    commands:
+      - name: start focus playlist
+        action: play
+        params:
+          playlist: PLAYLIST_ID   # shorthand for spotify:playlist:ID
+        confirm: true
+        timeout: 15s
+
+      - name: disable shuffle
+        action: shuffle
+        params:
+          enabled: false
+        confirm: true
+        timeout: 5s
+
+      - name: set volume
+        action: volume
+        params:
+          level: 40
+        confirm: true
+        timeout: 5s
+
+  # Wind down: lower volume then pause. Demonstrates set composition via run_set.
+  wind_down:
+    device_id: SPOTIFY_DEVICE_ID
+    commands:
+      - name: lower volume
+        action: volume
+        params:
+          level: 15
+        confirm: true
+        timeout: 5s
+
+      - name: pause
+        action: pause
+        confirm: true
+        timeout: 10s
+
+  # Full evening routine: focus music, then wind down.
+  evening:
+    commands:
+      - action: run_set
+        params:
+          set: focus_mode
+
+      - action: run_set
+        params:
+          set: wind_down

@@ -10,7 +10,6 @@ import (
 
 var configPath string
 var appVersion string
-var deviceID string
 var newSpotifyClient = spotify.NewClient
 
 func SetVersion(v string) {
@@ -39,8 +38,7 @@ func executeRoot() error {
 }
 
 // newClientFromConfig loads config, refreshes the access token, and returns
-// a ready-to-use Spotify client. All commands that talk to the API call this
-// instead of repeating the three-step bootstrap themselves.
+// a ready-to-use Spotify client.
 func newClientFromConfig() (*spotify.Client, error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -57,6 +55,5 @@ func newClientFromConfig() (*spotify.Client, error) {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", config.DefaultConfigPath, "path to config file")
-	rootCmd.PersistentFlags().StringVar(&deviceID, "device", "", "Spotify device ID")
 	rootCmd.AddCommand(versionCmd)
 }

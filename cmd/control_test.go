@@ -1,99 +1,164 @@
 package cmd
 
 import (
-	"path/filepath"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/spotify"
 )
 
-func TestWithPlayerClientUsesConfigAndTokenRefresh(t *testing.T) {
+func TestPauseCmd_NoDevice(t *testing.T) {
 	oldConfigPath := configPath
 	oldRefresh := spotify.RefreshAccessToken
 	oldNewClient := newSpotifyClient
-	oldDeviceID := deviceID
+	oldURLPlayer := spotify.URLPlayer
+	oldPauseDeviceID := pauseDeviceID
 	defer func() {
 		configPath = oldConfigPath
 		spotify.RefreshAccessToken = oldRefresh
 		newSpotifyClient = oldNewClient
-		deviceID = oldDeviceID
+		spotify.URLPlayer = oldURLPlayer
+		pauseDeviceID = oldPauseDeviceID
 	}()
 
-	tmpDir := t.TempDir()
-	configPath = filepath.Join(tmpDir, "config.yaml")
-	cfg := &config.Config{
-		ClientID:     "id",
-		ClientSecret: "secret",
-		RefreshToken: "refresh",
-		RedirectURI:  "https://example.com/callback",
-	}
-	if err := config.Save(configPath, cfg); err != nil {
-		t.Fatal(err)
-	}
-
-	spotify.RefreshAccessToken = func(clientB64, refreshToken string) (string, error) {
-		if clientB64 == cfg.ClientB64() && refreshToken == cfg.RefreshToken {
-			return "access-token", nil
-		}
-		return "", nil
-	}
-
-	newSpotifyClient = func(accessToken string) *spotify.Client {
-		if accessToken != "access-token" {
-			t.Fatalf("unexpected access token %q", accessToken)
-		}
-		return &spotify.Client{}
-	}
-
-	deviceID = "device-1"
-	err := withPlayerClient(func(c *spotify.Client, id string) error {
-		if id != deviceID {
-			t.Fatalf("expected device id %q, got %q", deviceID, id)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestWithPlayerClientMissingDevice(t *testing.T) {
-	oldDeviceID := deviceID
-	deviceID = ""
-	defer func() { deviceID = oldDeviceID }()
-
-	if err := withPlayerClient(func(c *spotify.Client, id string) error { return nil }); err == nil {
-		t.Fatal("expected error when device id is missing")
-	}
-}
-
-func TestExecutePlaybackActionPrintsSuccess(t *testing.T) {
-	oldConfigPath := configPath
-	oldDeviceID := deviceID
-	oldRefresh := spotify.RefreshAccessToken
-	oldNewClient := newSpotifyClient
-	defer func() {
-		configPath = oldConfigPath
-		deviceID = oldDeviceID
-		spotify.RefreshAccessToken = oldRefresh
-		newSpotifyClient = oldNewClient
-	}()
-
+	pauseDeviceID = ""
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	deviceID = "device-1"
 	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
-	newSpotifyClient = func(_ string) *spotify.Client { return &spotify.Client{} }
 
-	output := captureOutput(t, func() {
-		if err := executePlaybackAction("pause", func(c *spotify.Client, id string) error {
-			return nil
-		}); err != nil {
-			t.Fatal(err)
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		// device_id should be absent from the URL
+		if r.URL.Query().Get("device_id") != "" {
+			t.Errorf("expected no device_id query param, got %q", r.URL.Query().Get("device_id"))
 		}
-	})
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	spotify.URLPlayer = srv.URL
+	newSpotifyClient = func(token string) *spotify.Client {
+		c := spotify.NewClient(token)
+		c.SetHTTPClient(srv.Client())
+		return c
+	}
 
-	if output != "Pause on device device-1\n" {
-		t.Fatalf("unexpected output: %q", output)
+	if err := pauseCmd.RunE(pauseCmd, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Error("expected pause API to be called")
+	}
+}
+
+func TestPauseCmd_WithDevice(t *testing.T) {
+	oldConfigPath := configPath
+	oldRefresh := spotify.RefreshAccessToken
+	oldNewClient := newSpotifyClient
+	oldURLPlayer := spotify.URLPlayer
+	oldPauseDeviceID := pauseDeviceID
+	defer func() {
+		configPath = oldConfigPath
+		spotify.RefreshAccessToken = oldRefresh
+		newSpotifyClient = oldNewClient
+		spotify.URLPlayer = oldURLPlayer
+		pauseDeviceID = oldPauseDeviceID
+	}()
+
+	pauseDeviceID = "dev-1"
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("device_id") != "dev-1" {
+			t.Errorf("expected device_id=dev-1, got %q", r.URL.Query().Get("device_id"))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	spotify.URLPlayer = srv.URL
+	newSpotifyClient = func(token string) *spotify.Client {
+		c := spotify.NewClient(token)
+		c.SetHTTPClient(srv.Client())
+		return c
+	}
+
+	if err := pauseCmd.RunE(pauseCmd, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNextCmd_NoDevice(t *testing.T) {
+	oldConfigPath := configPath
+	oldRefresh := spotify.RefreshAccessToken
+	oldNewClient := newSpotifyClient
+	oldURLPlayer := spotify.URLPlayer
+	oldNextDeviceID := nextDeviceID
+	defer func() {
+		configPath = oldConfigPath
+		spotify.RefreshAccessToken = oldRefresh
+		newSpotifyClient = oldNewClient
+		spotify.URLPlayer = oldURLPlayer
+		nextDeviceID = oldNextDeviceID
+	}()
+
+	nextDeviceID = ""
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("device_id") != "" {
+			t.Errorf("expected no device_id, got %q", r.URL.Query().Get("device_id"))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	spotify.URLPlayer = srv.URL
+	newSpotifyClient = func(token string) *spotify.Client {
+		c := spotify.NewClient(token)
+		c.SetHTTPClient(srv.Client())
+		return c
+	}
+
+	if err := nextCmd.RunE(nextCmd, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPreviousCmd_WithDevice(t *testing.T) {
+	oldConfigPath := configPath
+	oldRefresh := spotify.RefreshAccessToken
+	oldNewClient := newSpotifyClient
+	oldURLPlayer := spotify.URLPlayer
+	oldPreviousDeviceID := previousDeviceID
+	defer func() {
+		configPath = oldConfigPath
+		spotify.RefreshAccessToken = oldRefresh
+		newSpotifyClient = oldNewClient
+		spotify.URLPlayer = oldURLPlayer
+		previousDeviceID = oldPreviousDeviceID
+	}()
+
+	previousDeviceID = "dev-2"
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("device_id") != "dev-2" {
+			t.Errorf("expected device_id=dev-2, got %q", r.URL.Query().Get("device_id"))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	spotify.URLPlayer = srv.URL
+	newSpotifyClient = func(token string) *spotify.Client {
+		c := spotify.NewClient(token)
+		c.SetHTTPClient(srv.Client())
+		return c
+	}
+
+	if err := previousCmd.RunE(previousCmd, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -26,25 +27,34 @@ func (c *Client) SetHTTPClient(client *http.Client) {
 	c.httpClient = client
 }
 
-func (c *Client) Play(deviceID, playlistURI string) error {
+// playerURL builds a player endpoint URL, appending device_id only when non-empty.
+func playerURL(base, path, deviceID string) string {
+	u := base
+	if path != "" {
+		u = base + path
+	}
+	if deviceID == "" {
+		return u
+	}
+	return u + "?" + url.Values{"device_id": {deviceID}}.Encode()
+}
+
+func (c *Client) Play(deviceID, contextURI string) error {
 	var reqBody io.Reader
-	if playlistURI != "" {
-		body, err := json.Marshal(map[string]string{"context_uri": playlistURI})
+	if contextURI != "" {
+		body, err := json.Marshal(map[string]string{"context_uri": contextURI})
 		if err != nil {
 			return fmt.Errorf("could not marshal play request: %w", err)
 		}
 		reqBody = bytes.NewReader(body)
 	}
 
-	req, err := http.NewRequest(http.MethodPut,
-		fmt.Sprintf("%s/play?device_id=%s", URLPlayer, deviceID),
-		reqBody,
-	)
+	req, err := http.NewRequest(http.MethodPut, playerURL(URLPlayer, "/play", deviceID), reqBody)
 	if err != nil {
 		return fmt.Errorf("could not create play request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-	if playlistURI != "" {
+	if contextURI != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
@@ -60,10 +70,7 @@ func (c *Client) TransferPlayback(deviceIDs []string, play bool) error {
 		return fmt.Errorf("could not marshal transfer request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPut,
-		URLPlayer,
-		bytes.NewReader(body),
-	)
+	req, err := http.NewRequest(http.MethodPut, URLPlayer, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("could not create transfer request: %w", err)
 	}
@@ -73,73 +80,66 @@ func (c *Client) TransferPlayback(deviceIDs []string, play bool) error {
 	return c.doExpectSuccess(req, "transfer playback")
 }
 
+// Shuffle enables shuffle on a device. Kept for backward compatibility.
 func (c *Client) Shuffle(deviceID string) error {
-	req, err := http.NewRequest(http.MethodPut,
-		fmt.Sprintf("%s/shuffle?state=true&device_id=%s", URLPlayer, deviceID),
-		nil,
-	)
+	return c.SetShuffle(deviceID, true)
+}
+
+// SetShuffle enables or disables shuffle. device_id is optional.
+func (c *Client) SetShuffle(deviceID string, enabled bool) error {
+	params := url.Values{"state": {fmt.Sprintf("%t", enabled)}}
+	if deviceID != "" {
+		params.Set("device_id", deviceID)
+	}
+	req, err := http.NewRequest(http.MethodPut, URLPlayer+"/shuffle?"+params.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("could not create shuffle request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-
 	return c.doExpectSuccess(req, "shuffle")
 }
 
 func (c *Client) Pause(deviceID string) error {
-	req, err := http.NewRequest(http.MethodPut,
-		fmt.Sprintf("%s/pause?device_id=%s", URLPlayer, deviceID),
-		nil,
-	)
+	req, err := http.NewRequest(http.MethodPut, playerURL(URLPlayer, "/pause", deviceID), nil)
 	if err != nil {
 		return fmt.Errorf("could not create pause request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-
 	return c.doExpectSuccess(req, "pause")
 }
 
 func (c *Client) Next(deviceID string) error {
-	req, err := http.NewRequest(http.MethodPost,
-		fmt.Sprintf("%s/next?device_id=%s", URLPlayer, deviceID),
-		nil,
-	)
+	req, err := http.NewRequest(http.MethodPost, playerURL(URLPlayer, "/next", deviceID), nil)
 	if err != nil {
 		return fmt.Errorf("could not create next request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-
 	return c.doExpectSuccess(req, "next")
 }
 
 func (c *Client) Previous(deviceID string) error {
-	req, err := http.NewRequest(http.MethodPost,
-		fmt.Sprintf("%s/previous?device_id=%s", URLPlayer, deviceID),
-		nil,
-	)
+	req, err := http.NewRequest(http.MethodPost, playerURL(URLPlayer, "/previous", deviceID), nil)
 	if err != nil {
 		return fmt.Errorf("could not create previous request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-
 	return c.doExpectSuccess(req, "previous")
 }
 
 func (c *Client) SetVolume(deviceID string, volumePercent int) error {
-	req, err := http.NewRequest(http.MethodPut,
-		fmt.Sprintf("%s/volume?volume_percent=%d&device_id=%s", URLPlayer, volumePercent, deviceID),
-		nil,
-	)
+	params := url.Values{"volume_percent": {fmt.Sprintf("%d", volumePercent)}}
+	if deviceID != "" {
+		params.Set("device_id", deviceID)
+	}
+	req, err := http.NewRequest(http.MethodPut, URLPlayer+"/volume?"+params.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("could not create volume request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-
 	return c.doExpectSuccess(req, "set volume")
 }
 
-// doExpectSuccess executes req and returns nil if the response status is 2xx,
-// or a descriptive error otherwise.
+// doExpectSuccess executes req and returns nil on 2xx, or a descriptive error.
 func (c *Client) doExpectSuccess(req *http.Request, action string) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
