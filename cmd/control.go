@@ -19,7 +19,7 @@ var pauseCmd = &cobra.Command{
 	Use:   "pause",
 	Short: "Pause Spotify playback",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := verbClient()
+		client, err := newClientFromConfig()
 		if err != nil {
 			return err
 		}
@@ -34,7 +34,7 @@ var nextCmd = &cobra.Command{
 	Use:   "next",
 	Short: "Skip to the next track",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := verbClient()
+		client, err := newClientFromConfig()
 		if err != nil {
 			return err
 		}
@@ -49,7 +49,7 @@ var previousCmd = &cobra.Command{
 	Use:   "previous",
 	Short: "Return to the previous track",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := verbClient()
+		client, err := newClientFromConfig()
 		if err != nil {
 			return err
 		}
@@ -64,7 +64,7 @@ var shuffleCmd = &cobra.Command{
 	Use:   "shuffle",
 	Short: "Enable or disable shuffle",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := verbClient()
+		client, err := newClientFromConfig()
 		if err != nil {
 			return err
 		}
@@ -86,7 +86,7 @@ var repeatCmd = &cobra.Command{
 		if repeatState != "off" && repeatState != "track" && repeatState != "context" {
 			return fmt.Errorf("--state must be one of: off, track, context (got %q)", repeatState)
 		}
-		client, err := verbClient()
+		client, err := newClientFromConfig()
 		if err != nil {
 			return err
 		}

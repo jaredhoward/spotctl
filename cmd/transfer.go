@@ -21,7 +21,7 @@ func runTransfer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("transfer requires --device")
 	}
 
-	client, err := verbClient()
+	client, err := newClientFromConfig()
 	if err != nil {
 		return err
 	}

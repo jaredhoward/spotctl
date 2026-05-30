@@ -373,30 +373,6 @@ sets:
 	}
 }
 
-// ----- Shuffle pointer in play command ---------------------------------------
-
-func TestPlayCommandShuffleParam(t *testing.T) {
-	yaml := `
-client_id: id
-client_secret: secret
-refresh_token: refresh
-sets:
-  test:
-    commands:
-      - action: play
-        params:
-          shuffle: true
-`
-	cfg, err := Load(writeYAML(t, yaml))
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-	cmd := cfg.Sets["test"].Commands[0]
-	if cmd.Params.Shuffle == nil || !*cmd.Params.Shuffle {
-		t.Error("expected shuffle=true on play command params")
-	}
-}
-
 // ----- command name is optional ----------------------------------------------
 
 func TestCommandNameOptional(t *testing.T) {

@@ -277,11 +277,20 @@ func TestConfirmed_Shuffle(t *testing.T) {
 func TestConfirmed_Volume(t *testing.T) {
 	level := 42
 	cmd := config.Command{Action: "volume", Params: config.CommandParams{Level: &level}}
+	// Exact match.
 	if !confirmed(cmd, &spotify.PlaybackState{Device: spotify.Device{VolumePercent: 42}}, "") {
-		t.Error("expected confirmed when volume matches")
+		t.Error("expected confirmed when volume matches exactly")
 	}
+	// ±1 tolerance: 41 and 43 should both be accepted.
+	if !confirmed(cmd, &spotify.PlaybackState{Device: spotify.Device{VolumePercent: 41}}, "") {
+		t.Error("expected confirmed when volume is within ±1 (41)")
+	}
+	if !confirmed(cmd, &spotify.PlaybackState{Device: spotify.Device{VolumePercent: 43}}, "") {
+		t.Error("expected confirmed when volume is within ±1 (43)")
+	}
+	// Beyond tolerance should not confirm.
 	if confirmed(cmd, &spotify.PlaybackState{Device: spotify.Device{VolumePercent: 30}}, "") {
-		t.Error("expected not confirmed when volume differs")
+		t.Error("expected not confirmed when volume differs by more than 1")
 	}
 }
 
@@ -344,7 +353,6 @@ func TestConfirmed_NextNilItem(t *testing.T) {
 }
 
 func TestConfirmed_RunSet_DefaultTrue(t *testing.T) {
-	// run_set and any unrecognised action hit the default branch → true
 	cmd := config.Command{Action: "run_set"}
 	if !confirmed(cmd, &spotify.PlaybackState{}, "") {
 		t.Error("expected confirmed=true for run_set (default branch)")
@@ -353,14 +361,9 @@ func TestConfirmed_RunSet_DefaultTrue(t *testing.T) {
 
 // ----- executeCommand: prior track URI snapshot ------------------------------
 
-// TestExecuteCommand_Next_SnapshotsURI verifies that when confirm:true is set
-// on a next command, executeCommand snapshots the current track URI before
-// dispatching and uses it for confirmation polling.
 func TestExecuteCommand_Next_SnapshotsURI(t *testing.T) {
 	callCount := 0
 	srv := setServer(t, map[string]http.HandlerFunc{
-		// First GET: current state (prior track)
-		// Subsequent GETs: confirmation polls (new track)
 		"GET /": func(w http.ResponseWriter, r *http.Request) {
 			callCount++
 			uri := "spotify:track:before"
@@ -392,8 +395,6 @@ func TestExecuteCommand_Next_SnapshotsURI(t *testing.T) {
 	}
 }
 
-// TestExecuteCommand_ConfirmPollError verifies that a transient state poll
-// error is tolerated and polling continues until success or timeout.
 func TestExecuteCommand_ConfirmPollError(t *testing.T) {
 	pollCount := 0
 	srv := setServer(t, map[string]http.HandlerFunc{
@@ -401,11 +402,9 @@ func TestExecuteCommand_ConfirmPollError(t *testing.T) {
 		"GET /": func(w http.ResponseWriter, r *http.Request) {
 			pollCount++
 			if pollCount < 3 {
-				// Return a non-200/204 to simulate a transient error.
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
-			// Third poll succeeds.
 			w.Write(stateBody(spotify.PlaybackState{IsPlaying: true}))
 		},
 	})
@@ -439,6 +438,7 @@ func TestResolveURIFromParams(t *testing.T) {
 		{config.CommandParams{PlaylistID: "pl1"}, "spotify:playlist:pl1", false},
 		{config.CommandParams{TrackID: "tr1"}, "spotify:track:tr1", false},
 		{config.CommandParams{AlbumID: "al1"}, "spotify:album:al1", false},
+		{config.CommandParams{ArtistID: "ar1"}, "spotify:artist:ar1", false},
 		{config.CommandParams{PlaylistID: "pl1", TrackID: "tr1"}, "", true},
 	}
 	for _, tc := range cases {

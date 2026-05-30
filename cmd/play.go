@@ -13,6 +13,7 @@ var (
 	playlistID   string
 	trackID      string
 	albumID      string
+	artistID     string
 )
 
 var playCmd = &cobra.Command{
@@ -22,12 +23,12 @@ var playCmd = &cobra.Command{
 }
 
 func runPlay(cmd *cobra.Command, args []string) error {
-	contextURI, err := resolveURI(cmd, uri, playlistID, trackID, albumID)
+	contextURI, err := resolveURI(cmd, uri, playlistID, trackID, albumID, artistID)
 	if err != nil {
 		return err
 	}
 
-	client, err := verbClient()
+	client, err := newClientFromConfig()
 	if err != nil {
 		return err
 	}
@@ -43,7 +44,7 @@ func runPlay(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func resolveURI(cmd *cobra.Command, uri, playlistID, trackID, albumID string) (string, error) {
+func resolveURI(cmd *cobra.Command, uri, playlistID, trackID, albumID, artistID string) (string, error) {
 	set := []string{}
 	if cmd.Flags().Changed("uri") {
 		set = append(set, "--uri")
@@ -57,6 +58,9 @@ func resolveURI(cmd *cobra.Command, uri, playlistID, trackID, albumID string) (s
 	if cmd.Flags().Changed("album") {
 		set = append(set, "--album")
 	}
+	if cmd.Flags().Changed("artist") {
+		set = append(set, "--artist")
+	}
 	if len(set) > 1 {
 		return "", fmt.Errorf("only one of %v may be specified at a time", set)
 	}
@@ -69,6 +73,8 @@ func resolveURI(cmd *cobra.Command, uri, playlistID, trackID, albumID string) (s
 		return "spotify:track:" + trackID, nil
 	case cmd.Flags().Changed("album"):
 		return "spotify:album:" + albumID, nil
+	case cmd.Flags().Changed("artist"):
+		return "spotify:artist:" + artistID, nil
 	}
 	return "", nil
 }
@@ -79,5 +85,6 @@ func init() {
 	playCmd.Flags().StringVar(&playlistID, "playlist", "", "playlist ID (shorthand for --uri spotify:playlist:ID)")
 	playCmd.Flags().StringVar(&trackID, "track", "", "track ID (shorthand for --uri spotify:track:ID)")
 	playCmd.Flags().StringVar(&albumID, "album", "", "album ID (shorthand for --uri spotify:album:ID)")
+	playCmd.Flags().StringVar(&artistID, "artist", "", "artist ID (shorthand for --uri spotify:artist:ID)")
 	rootCmd.AddCommand(playCmd)
 }

@@ -76,8 +76,11 @@ func resolveURIFromParams(p config.CommandParams) (string, error) {
 	if p.AlbumID != "" {
 		count++
 	}
+	if p.ArtistID != "" {
+		count++
+	}
 	if count > 1 {
-		return "", fmt.Errorf("only one of uri/playlist/track/album may be set in params")
+		return "", fmt.Errorf("only one of uri/playlist/track/album/artist may be set in params")
 	}
 	switch {
 	case p.URI != "":
@@ -88,20 +91,8 @@ func resolveURIFromParams(p config.CommandParams) (string, error) {
 		return "spotify:track:" + p.TrackID, nil
 	case p.AlbumID != "":
 		return "spotify:album:" + p.AlbumID, nil
+	case p.ArtistID != "":
+		return "spotify:artist:" + p.ArtistID, nil
 	}
 	return "", nil
-}
-
-// verbClient loads config, refreshes the token, and returns a ready client.
-// Used by CLI verbs which each manage their own bootstrap.
-func verbClient() (*spotify.Client, error) {
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
-	}
-	accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to refresh token: %w", err)
-	}
-	return newSpotifyClient(accessToken), nil
 }

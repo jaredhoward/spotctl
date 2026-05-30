@@ -17,9 +17,6 @@ const (
 // DefaultConfirmTimeout is used when a command has confirm:true but no explicit timeout.
 const DefaultConfirmTimeout = 15 * time.Second
 
-// DefaultPollInterval is how often confirmation polls the playback state.
-const DefaultPollInterval = 500 * time.Millisecond
-
 // ValidRepeatStates is the set of values accepted by the repeat action.
 var ValidRepeatStates = map[string]bool{"off": true, "track": true, "context": true}
 
@@ -95,7 +92,7 @@ type CommandParams struct {
 	PlaylistID  string `yaml:"playlist,omitempty"`
 	TrackID     string `yaml:"track,omitempty"`
 	AlbumID     string `yaml:"album,omitempty"`
-	Shuffle     *bool  `yaml:"shuffle,omitempty"`
+	ArtistID    string `yaml:"artist,omitempty"`
 	Level       *int   `yaml:"level,omitempty"`
 	Play        *bool  `yaml:"play,omitempty"`
 	Enabled     *bool  `yaml:"enabled,omitempty"`

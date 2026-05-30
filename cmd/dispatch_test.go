@@ -12,9 +12,9 @@ import (
 	"github.com/jaredhoward/spotctl/spotify"
 )
 
-// ----- verbClient ------------------------------------------------------------
+// ----- newClientFromConfig ---------------------------------------------------
 
-func TestVerbClient_TokenRefreshFailure(t *testing.T) {
+func TestNewClientFromConfig_TokenRefreshFailure(t *testing.T) {
 	oldConfigPath := configPath
 	oldRefresh := spotify.RefreshAccessToken
 	defer func() {
@@ -27,18 +27,18 @@ func TestVerbClient_TokenRefreshFailure(t *testing.T) {
 		return "", errors.New("token refresh failed")
 	}
 
-	_, err := verbClient()
+	_, err := newClientFromConfig()
 	if err == nil || !strings.Contains(err.Error(), "failed to refresh token") {
 		t.Fatalf("expected token refresh error, got %v", err)
 	}
 }
 
-func TestVerbClient_ConfigLoadFailure(t *testing.T) {
+func TestNewClientFromConfig_ConfigLoadFailure(t *testing.T) {
 	oldConfigPath := configPath
 	defer func() { configPath = oldConfigPath }()
 
 	configPath = "/nonexistent/path/config.yaml"
-	_, err := verbClient()
+	_, err := newClientFromConfig()
 	if err == nil || !strings.Contains(err.Error(), "failed to load config") {
 		t.Fatalf("expected config load error, got %v", err)
 	}
@@ -160,6 +160,27 @@ func TestDispatchAction_Play_WithAlbum(t *testing.T) {
 	}
 	if !strings.Contains(gotBody, "spotify:album:al789") {
 		t.Errorf("expected album URI in body, got: %q", gotBody)
+	}
+}
+
+func TestDispatchAction_Play_WithArtist(t *testing.T) {
+	var gotBody string
+	srv := setServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			b, _ := readBody(r)
+			gotBody = b
+			w.WriteHeader(http.StatusNoContent)
+		},
+	})
+	defer srv.Close()
+	useTestServer(t, srv)
+
+	p := config.CommandParams{DeviceID: "d1", ArtistID: "ar999"}
+	if err := dispatchAction(p, "play", setClient(t, srv), nil, 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(gotBody, "spotify:artist:ar999") {
+		t.Errorf("expected artist URI in body, got: %q", gotBody)
 	}
 }
 

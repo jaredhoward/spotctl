@@ -17,11 +17,14 @@ var volumeCmd = &cobra.Command{
 }
 
 func runVolume(cmd *cobra.Command, args []string) error {
+	if !cmd.Flags().Changed("level") {
+		return fmt.Errorf("volume requires --level (0–100)")
+	}
 	if volumeLevel < 0 || volumeLevel > 100 {
 		return fmt.Errorf("volume must be between 0 and 100 (got %d)", volumeLevel)
 	}
 
-	client, err := verbClient()
+	client, err := newClientFromConfig()
 	if err != nil {
 		return err
 	}
@@ -39,6 +42,6 @@ func runVolume(cmd *cobra.Command, args []string) error {
 
 func init() {
 	volumeCmd.Flags().StringVar(&volumeDeviceID, "device", "", "Spotify device ID (omit to target active device)")
-	volumeCmd.Flags().IntVar(&volumeLevel, "level", 50, "volume level (0–100)")
+	volumeCmd.Flags().IntVar(&volumeLevel, "level", 0, "volume level (0–100, required)")
 	rootCmd.AddCommand(volumeCmd)
 }

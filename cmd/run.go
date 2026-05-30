@@ -31,11 +31,10 @@ var runCmd = &cobra.Command{
 			return fmt.Errorf("set %q not found in config", name)
 		}
 
-		accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
+		client, err := newClientFromConfig()
 		if err != nil {
-			return fmt.Errorf("failed to refresh token: %w", err)
+			return err
 		}
-		client := newSpotifyClient(accessToken)
 
 		return runSet(name, set, cfg, client, 0)
 	},
@@ -198,7 +197,13 @@ func confirmed(cmd config.Command, state *spotify.PlaybackState, priorTrackURI s
 		if cmd.Params.Level == nil {
 			return true
 		}
-		return state.Device.VolumePercent == *cmd.Params.Level
+		// Spotify can report volume ±1% from the requested value due to
+		// device rounding, so we treat a difference of 1 as confirmed.
+		diff := state.Device.VolumePercent - *cmd.Params.Level
+		if diff < 0 {
+			diff = -diff
+		}
+		return diff <= 1
 	case "transfer":
 		return state.Device.ID == cmd.Params.DeviceID
 	case "next", "previous":

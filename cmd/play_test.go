@@ -12,11 +12,12 @@ func TestResolveURI(t *testing.T) {
 	cmd.Flags().String("playlist", "", "")
 	cmd.Flags().String("track", "", "")
 	cmd.Flags().String("album", "", "")
+	cmd.Flags().String("artist", "", "")
 
 	if err := cmd.Flags().Set("uri", "spotify:artist:abc"); err != nil {
 		t.Fatal(err)
 	}
-	uri, err := resolveURI(cmd, "spotify:artist:abc", "", "", "")
+	uri, err := resolveURI(cmd, "spotify:artist:abc", "", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,15 +30,33 @@ func TestResolveURI(t *testing.T) {
 	cmd.Flags().String("playlist", "", "")
 	cmd.Flags().String("track", "", "")
 	cmd.Flags().String("album", "", "")
+	cmd.Flags().String("artist", "", "")
 	if err := cmd.Flags().Set("playlist", "playlistid"); err != nil {
 		t.Fatal(err)
 	}
-	uri, err = resolveURI(cmd, "", "playlistid", "", "")
+	uri, err = resolveURI(cmd, "", "playlistid", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if uri != "spotify:playlist:playlistid" {
 		t.Fatalf("expected playlist uri, got %q", uri)
+	}
+
+	cmd = &cobra.Command{}
+	cmd.Flags().String("uri", "", "")
+	cmd.Flags().String("playlist", "", "")
+	cmd.Flags().String("track", "", "")
+	cmd.Flags().String("album", "", "")
+	cmd.Flags().String("artist", "", "")
+	if err := cmd.Flags().Set("artist", "artistid"); err != nil {
+		t.Fatal(err)
+	}
+	uri, err = resolveURI(cmd, "", "", "", "", "artistid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uri != "spotify:artist:artistid" {
+		t.Fatalf("expected artist uri, got %q", uri)
 	}
 }
 
@@ -47,6 +66,7 @@ func TestResolveURIMultipleFlags(t *testing.T) {
 	cmd.Flags().String("playlist", "", "")
 	cmd.Flags().String("track", "", "")
 	cmd.Flags().String("album", "", "")
+	cmd.Flags().String("artist", "", "")
 
 	if err := cmd.Flags().Set("uri", "spotify:artist:abc"); err != nil {
 		t.Fatal(err)
@@ -54,7 +74,7 @@ func TestResolveURIMultipleFlags(t *testing.T) {
 	if err := cmd.Flags().Set("track", "trackid"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := resolveURI(cmd, "spotify:artist:abc", "", "trackid", "")
+	_, err := resolveURI(cmd, "spotify:artist:abc", "", "trackid", "", "")
 	if err == nil {
 		t.Fatal("expected error when multiple uri flags are set")
 	}

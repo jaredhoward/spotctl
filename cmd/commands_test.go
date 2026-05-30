@@ -31,10 +31,18 @@ func writeTempConfig(t *testing.T, cfg *config.Config) string {
 
 func resetPlayCmdFlags(t *testing.T) {
 	t.Helper()
-	for _, name := range []string{"uri", "playlist", "track", "album"} {
+	for _, name := range []string{"uri", "playlist", "track", "album", "artist"} {
 		if flag := playCmd.Flags().Lookup(name); flag != nil {
 			flag.Changed = false
 		}
+	}
+}
+
+func resetVolumeCmdFlags(t *testing.T) {
+	t.Helper()
+	if flag := volumeCmd.Flags().Lookup("level"); flag != nil {
+		flag.Changed = false
+		flag.Value.Set("0")
 	}
 }
 
@@ -100,7 +108,6 @@ func TestPlayCmdRunE_NoDevice(t *testing.T) {
 	called := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
-		// no device_id expected
 		if r.URL.Query().Get("device_id") != "" {
 			t.Errorf("expected no device_id, got %q", r.URL.Query().Get("device_id"))
 		}
@@ -219,10 +226,23 @@ func TestTransferCmdRunE_Success(t *testing.T) {
 	}
 }
 
+// ----- volume command --------------------------------------------------------
+
+func TestVolumeCmdRunE_NoLevel(t *testing.T) {
+	defer resetVolumeCmdFlags(t)
+
+	err := volumeCmd.RunE(volumeCmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "requires --level") {
+		t.Fatalf("expected missing-level error, got %v", err)
+	}
+}
+
 func TestVolumeCmdRunE_InvalidLevel(t *testing.T) {
-	oldVolumeLevel := volumeLevel
-	defer func() { volumeLevel = oldVolumeLevel }()
-	volumeLevel = 101
+	defer resetVolumeCmdFlags(t)
+
+	if err := volumeCmd.Flags().Set("level", "101"); err != nil {
+		t.Fatal(err)
+	}
 
 	err := volumeCmd.RunE(volumeCmd, nil)
 	if err == nil || !strings.Contains(err.Error(), "volume must be between 0 and 100") {
@@ -236,18 +256,19 @@ func TestVolumeCmdRunE_Success(t *testing.T) {
 	oldNewClient := newSpotifyClient
 	oldURLPlayer := spotify.URLPlayer
 	oldVolumeDeviceID := volumeDeviceID
-	oldVolumeLevel := volumeLevel
 	defer func() {
 		configPath = oldConfigPath
 		spotify.RefreshAccessToken = oldRefresh
 		newSpotifyClient = oldNewClient
 		spotify.URLPlayer = oldURLPlayer
 		volumeDeviceID = oldVolumeDeviceID
-		volumeLevel = oldVolumeLevel
+		resetVolumeCmdFlags(t)
 	}()
 
 	volumeDeviceID = "device-1"
-	volumeLevel = 42
+	if err := volumeCmd.Flags().Set("level", "42"); err != nil {
+		t.Fatal(err)
+	}
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
 
