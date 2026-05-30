@@ -20,6 +20,9 @@ const DefaultConfirmTimeout = 15 * time.Second
 // DefaultPollInterval is how often confirmation polls the playback state.
 const DefaultPollInterval = 500 * time.Millisecond
 
+// ValidRepeatStates is the set of values accepted by the repeat action.
+var ValidRepeatStates = map[string]bool{"off": true, "track": true, "context": true}
+
 // Set is a named list of commands to execute in order.
 type Set struct {
 	// DeviceID is the default device for all commands in this set. A command
@@ -87,17 +90,18 @@ func (c *Command) EffectiveOnTimeout(setDefault OnFailure) OnFailure {
 
 // CommandParams holds all possible parameters for any action type.
 type CommandParams struct {
-	DeviceID   string `yaml:"device_id,omitempty"`
-	URI        string `yaml:"uri,omitempty"`
-	PlaylistID string `yaml:"playlist,omitempty"`
-	TrackID    string `yaml:"track,omitempty"`
-	AlbumID    string `yaml:"album,omitempty"`
-	Shuffle    *bool  `yaml:"shuffle,omitempty"`
-	Level      *int   `yaml:"level,omitempty"`
-	Play       *bool  `yaml:"play,omitempty"`
-	Enabled    *bool  `yaml:"enabled,omitempty"`
-	Duration   string `yaml:"duration,omitempty"`
-	Set        string `yaml:"set,omitempty"`
+	DeviceID    string `yaml:"device_id,omitempty"`
+	URI         string `yaml:"uri,omitempty"`
+	PlaylistID  string `yaml:"playlist,omitempty"`
+	TrackID     string `yaml:"track,omitempty"`
+	AlbumID     string `yaml:"album,omitempty"`
+	Shuffle     *bool  `yaml:"shuffle,omitempty"`
+	Level       *int   `yaml:"level,omitempty"`
+	Play        *bool  `yaml:"play,omitempty"`
+	Enabled     *bool  `yaml:"enabled,omitempty"`
+	Duration    string `yaml:"duration,omitempty"`
+	Set         string `yaml:"set,omitempty"`
+	RepeatState string `yaml:"repeat_state,omitempty"` // off | track | context
 }
 
 // ShuffleEnabled returns the value of Enabled, defaulting to true.
@@ -126,6 +130,13 @@ func (p *CommandParams) Validate(action string) error {
 	case "volume":
 		if p.Level == nil {
 			return fmt.Errorf("action %q requires params.level", action)
+		}
+	case "repeat":
+		if p.RepeatState == "" {
+			return fmt.Errorf("action %q requires params.repeat_state (off, track, context)", action)
+		}
+		if !ValidRepeatStates[p.RepeatState] {
+			return fmt.Errorf("action %q: invalid repeat_state %q — must be off, track, or context", action, p.RepeatState)
 		}
 	case "sleep":
 		if p.Duration == "" {

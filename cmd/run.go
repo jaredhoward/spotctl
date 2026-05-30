@@ -192,6 +192,8 @@ func confirmed(cmd config.Command, state *spotify.PlaybackState, priorTrackURI s
 		return !state.IsPlaying
 	case "shuffle":
 		return state.ShuffleState == cmd.Params.ShuffleEnabled()
+	case "repeat":
+		return state.RepeatState == cmd.Params.RepeatState
 	case "volume":
 		if cmd.Params.Level == nil {
 			return true

@@ -9,7 +9,7 @@ import (
 )
 
 var configPath string
-var appVersion string
+var appVersion = "dev"
 var newSpotifyClient = spotify.NewClient
 
 func SetVersion(v string) {

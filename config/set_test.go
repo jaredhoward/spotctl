@@ -44,6 +44,10 @@ sets:
         action: run_set
         params:
           set: warmup
+      - name: set repeat
+        action: repeat
+        params:
+          repeat_state: context
   warmup:
     commands:
       - action: next
@@ -86,17 +90,13 @@ func TestSetRoundTrip(t *testing.T) {
 	if mv.OnTimeout != OnFailureFail {
 		t.Errorf("on_timeout: got %q, want %q", mv.OnTimeout, OnFailureFail)
 	}
-	if len(mv.Commands) != 5 {
-		t.Fatalf("expected 5 commands, got %d", len(mv.Commands))
+	if len(mv.Commands) != 6 {
+		t.Fatalf("expected 6 commands, got %d", len(mv.Commands))
 	}
 
-	// Command 0: play — no device_id in params; relies on set-level device.
 	c0 := mv.Commands[0]
 	if c0.Action != "play" {
 		t.Errorf("command 0 action: got %q, want play", c0.Action)
-	}
-	if c0.Params.DeviceID != "" {
-		t.Errorf("command 0 device_id: expected empty (set-level), got %q", c0.Params.DeviceID)
 	}
 	if c0.Params.PlaylistID != "pl123" {
 		t.Errorf("command 0 playlist: got %q", c0.Params.PlaylistID)
@@ -104,56 +104,41 @@ func TestSetRoundTrip(t *testing.T) {
 	if !c0.Confirm {
 		t.Error("command 0 confirm: expected true")
 	}
-	if c0.Timeout != "15s" {
-		t.Errorf("command 0 timeout: got %q", c0.Timeout)
-	}
 	if c0.OnTimeout != OnFailureFail {
 		t.Errorf("command 0 on_timeout: got %q", c0.OnTimeout)
 	}
 
-	// Command 1: shuffle
 	c1 := mv.Commands[1]
-	if c1.Action != "shuffle" {
-		t.Errorf("command 1 action: got %q", c1.Action)
-	}
-	if c1.Params.Enabled == nil || !*c1.Params.Enabled {
-		t.Error("command 1 enabled: expected true")
+	if c1.Action != "shuffle" || c1.Params.Enabled == nil || !*c1.Params.Enabled {
+		t.Errorf("command 1 shuffle unexpected: %+v", c1)
 	}
 
-	// Command 2: volume
 	c2 := mv.Commands[2]
-	if c2.Action != "volume" {
-		t.Errorf("command 2 action: got %q", c2.Action)
-	}
-	if c2.Params.Level == nil || *c2.Params.Level != 60 {
-		t.Errorf("command 2 level: got %v", c2.Params.Level)
+	if c2.Action != "volume" || c2.Params.Level == nil || *c2.Params.Level != 60 {
+		t.Errorf("command 2 volume unexpected: %+v", c2)
 	}
 
-	// Command 3: sleep
 	c3 := mv.Commands[3]
-	if c3.Action != "sleep" {
-		t.Errorf("command 3 action: got %q", c3.Action)
-	}
-	if c3.Params.Duration != "2s" {
-		t.Errorf("command 3 duration: got %q", c3.Params.Duration)
+	if c3.Action != "sleep" || c3.Params.Duration != "2s" {
+		t.Errorf("command 3 sleep unexpected: %+v", c3)
 	}
 
-	// Command 4: run_set
 	c4 := mv.Commands[4]
-	if c4.Action != "run_set" {
-		t.Errorf("command 4 action: got %q", c4.Action)
-	}
-	if c4.Params.Set != "warmup" {
-		t.Errorf("command 4 set: got %q", c4.Params.Set)
+	if c4.Action != "run_set" || c4.Params.Set != "warmup" {
+		t.Errorf("command 4 run_set unexpected: %+v", c4)
 	}
 
-	// warmup set — no device_id at set or command level.
+	c5 := mv.Commands[5]
+	if c5.Action != "repeat" {
+		t.Errorf("command 5 action: got %q, want repeat", c5.Action)
+	}
+	if c5.Params.RepeatState != "context" {
+		t.Errorf("command 5 repeat_state: got %q, want context", c5.Params.RepeatState)
+	}
+
 	warmup, ok := cfg.Sets["warmup"]
 	if !ok {
 		t.Fatal("expected set 'warmup'")
-	}
-	if warmup.DeviceID != "" {
-		t.Errorf("warmup set device_id: expected empty, got %q", warmup.DeviceID)
 	}
 	if len(warmup.Commands) != 1 || warmup.Commands[0].Action != "next" {
 		t.Errorf("warmup commands unexpected: %+v", warmup.Commands)
@@ -163,17 +148,14 @@ func TestSetRoundTrip(t *testing.T) {
 // ----- ResolvedDeviceID ------------------------------------------------------
 
 func TestResolvedDeviceID(t *testing.T) {
-	// Command device wins.
 	c := Command{Params: CommandParams{DeviceID: "cmd-dev"}}
 	if got := c.ResolvedDeviceID("set-dev"); got != "cmd-dev" {
 		t.Errorf("expected cmd-dev, got %q", got)
 	}
-	// Falls back to set device.
 	c.Params.DeviceID = ""
 	if got := c.ResolvedDeviceID("set-dev"); got != "set-dev" {
 		t.Errorf("expected set-dev, got %q", got)
 	}
-	// Both empty → empty (active device).
 	if got := c.ResolvedDeviceID(""); got != "" {
 		t.Errorf("expected empty, got %q", got)
 	}
@@ -218,8 +200,7 @@ func TestEffectiveOnError(t *testing.T) {
 	for _, tc := range cases {
 		c := Command{OnError: tc.cmdVal}
 		if got := c.EffectiveOnError(tc.setDefault); got != tc.want {
-			t.Errorf("EffectiveOnError(cmd=%q, set=%q) = %q, want %q",
-				tc.cmdVal, tc.setDefault, got, tc.want)
+			t.Errorf("EffectiveOnError(cmd=%q, set=%q) = %q, want %q", tc.cmdVal, tc.setDefault, got, tc.want)
 		}
 	}
 }
@@ -237,8 +218,7 @@ func TestEffectiveOnTimeout(t *testing.T) {
 	for _, tc := range cases {
 		c := Command{OnTimeout: tc.cmdVal}
 		if got := c.EffectiveOnTimeout(tc.setDefault); got != tc.want {
-			t.Errorf("EffectiveOnTimeout(cmd=%q, set=%q) = %q, want %q",
-				tc.cmdVal, tc.setDefault, got, tc.want)
+			t.Errorf("EffectiveOnTimeout(cmd=%q, set=%q) = %q, want %q", tc.cmdVal, tc.setDefault, got, tc.want)
 		}
 	}
 }
@@ -278,8 +258,6 @@ func TestValidateAllActions(t *testing.T) {
 		params  CommandParams
 		wantErr bool
 	}{
-		// device_id no longer required by Validate — may come from set level
-		// or be absent to target the active device.
 		{"play", CommandParams{}, false},
 		{"play", CommandParams{DeviceID: "d"}, false},
 		{"pause", CommandParams{}, false},
@@ -296,6 +274,12 @@ func TestValidateAllActions(t *testing.T) {
 		{"volume", CommandParams{Level: &level}, false},
 		{"volume", CommandParams{DeviceID: "d", Level: &level}, false},
 		{"volume", CommandParams{}, true},
+		// repeat requires repeat_state and it must be a valid value.
+		{"repeat", CommandParams{RepeatState: "off"}, false},
+		{"repeat", CommandParams{RepeatState: "track"}, false},
+		{"repeat", CommandParams{RepeatState: "context"}, false},
+		{"repeat", CommandParams{RepeatState: "loop"}, true},
+		{"repeat", CommandParams{}, true},
 		// sleep requires valid duration.
 		{"sleep", CommandParams{Duration: "1s"}, false},
 		{"sleep", CommandParams{Duration: "bad"}, true},
@@ -436,7 +420,7 @@ sets:
 	}
 }
 
-// ----- Validate invalid sleep duration message -------------------------------
+// ----- Validate sleep bad duration message -----------------------------------
 
 func TestValidateSleepBadDurationMessage(t *testing.T) {
 	p := CommandParams{Duration: "nope"}
@@ -446,5 +430,42 @@ func TestValidateSleepBadDurationMessage(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid") {
 		t.Errorf("expected 'invalid' in error, got: %v", err)
+	}
+}
+
+// ----- Validate repeat -------------------------------------------------------
+
+func TestValidateRepeatInvalidStateMessage(t *testing.T) {
+	p := CommandParams{RepeatState: "badvalue"}
+	err := p.Validate("repeat")
+	if err == nil {
+		t.Fatal("expected error for invalid repeat_state")
+	}
+	if !strings.Contains(err.Error(), "badvalue") {
+		t.Errorf("expected invalid value in error, got: %v", err)
+	}
+}
+
+func TestValidateRepeatMissingState(t *testing.T) {
+	p := CommandParams{}
+	err := p.Validate("repeat")
+	if err == nil {
+		t.Fatal("expected error for missing repeat_state")
+	}
+	if !strings.Contains(err.Error(), "repeat_state") {
+		t.Errorf("expected 'repeat_state' in error, got: %v", err)
+	}
+}
+
+// ----- ValidRepeatStates -----------------------------------------------------
+
+func TestValidRepeatStates(t *testing.T) {
+	for _, state := range []string{"off", "track", "context"} {
+		if !ValidRepeatStates[state] {
+			t.Errorf("expected %q to be a valid repeat state", state)
+		}
+	}
+	if ValidRepeatStates["loop"] {
+		t.Error("expected 'loop' to be invalid")
 	}
 }

@@ -99,6 +99,21 @@ func (c *Client) SetShuffle(deviceID string, enabled bool) error {
 	return c.doExpectSuccess(req, "shuffle")
 }
 
+// SetRepeat sets the repeat mode. state must be "off", "track", or "context".
+// device_id is optional.
+func (c *Client) SetRepeat(deviceID, state string) error {
+	params := url.Values{"state": {state}}
+	if deviceID != "" {
+		params.Set("device_id", deviceID)
+	}
+	req, err := http.NewRequest(http.MethodPut, URLPlayer+"/repeat?"+params.Encode(), nil)
+	if err != nil {
+		return fmt.Errorf("could not create repeat request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	return c.doExpectSuccess(req, "repeat")
+}
+
 func (c *Client) Pause(deviceID string) error {
 	req, err := http.NewRequest(http.MethodPut, playerURL(URLPlayer, "/pause", deviceID), nil)
 	if err != nil {

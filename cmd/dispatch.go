@@ -33,6 +33,9 @@ func dispatchAction(p config.CommandParams, action string, client *spotify.Clien
 	case "shuffle":
 		return client.SetShuffle(p.DeviceID, p.ShuffleEnabled())
 
+	case "repeat":
+		return client.SetRepeat(p.DeviceID, p.RepeatState)
+
 	case "volume":
 		return client.SetVolume(p.DeviceID, *p.Level)
 
