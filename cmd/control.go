@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/jaredhoward/spotctl/config"
+	"github.com/jaredhoward/spotctl/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +24,7 @@ var pauseCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := dispatchAction(config.CommandParams{DeviceID: pauseDeviceID}, "pause", client, nil, 0); err != nil {
+		if err := runner.DispatchAction(config.CommandParams{DeviceID: pauseDeviceID}, "pause", client, nil, 0); err != nil {
 			return fmt.Errorf("pause failed: %w", err)
 		}
 		return nil
@@ -38,7 +39,7 @@ var nextCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := dispatchAction(config.CommandParams{DeviceID: nextDeviceID}, "next", client, nil, 0); err != nil {
+		if err := runner.DispatchAction(config.CommandParams{DeviceID: nextDeviceID}, "next", client, nil, 0); err != nil {
 			return fmt.Errorf("next failed: %w", err)
 		}
 		return nil
@@ -53,7 +54,7 @@ var previousCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := dispatchAction(config.CommandParams{DeviceID: previousDeviceID}, "previous", client, nil, 0); err != nil {
+		if err := runner.DispatchAction(config.CommandParams{DeviceID: previousDeviceID}, "previous", client, nil, 0); err != nil {
 			return fmt.Errorf("previous failed: %w", err)
 		}
 		return nil
@@ -72,7 +73,7 @@ var shuffleCmd = &cobra.Command{
 			DeviceID: shuffleDeviceID,
 			Enabled:  &shuffleEnabled,
 		}
-		if err := dispatchAction(p, "shuffle", client, nil, 0); err != nil {
+		if err := runner.DispatchAction(p, "shuffle", client, nil, 0); err != nil {
 			return fmt.Errorf("shuffle failed: %w", err)
 		}
 		return nil
@@ -94,7 +95,7 @@ var repeatCmd = &cobra.Command{
 			DeviceID:    repeatDeviceID,
 			RepeatState: repeatState,
 		}
-		if err := dispatchAction(p, "repeat", client, nil, 0); err != nil {
+		if err := runner.DispatchAction(p, "repeat", client, nil, 0); err != nil {
 			return fmt.Errorf("repeat failed: %w", err)
 		}
 		return nil

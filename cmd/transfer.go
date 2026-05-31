@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/jaredhoward/spotctl/config"
+	"github.com/jaredhoward/spotctl/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +32,7 @@ func runTransfer(cmd *cobra.Command, args []string) error {
 		Play:     &transferPlay,
 	}
 
-	if err := dispatchAction(p, "transfer", client, nil, 0); err != nil {
+	if err := runner.DispatchAction(p, "transfer", client, nil, 0); err != nil {
 		return fmt.Errorf("transfer failed: %w", err)
 	}
 	return nil

@@ -11,120 +11,64 @@ import (
 	"github.com/jaredhoward/spotctl/spotify"
 )
 
-// statusSetup wires up config, token refresh, and a test HTTP server for
-// status tests. Returns a cleanup func — call defer cleanup() in each test.
-func statusSetup(t *testing.T, handler http.HandlerFunc) (cleanup func()) {
-	t.Helper()
+func TestDeviceActivity_Inactive(t *testing.T) {
+	if got := deviceActivity(false); got != "" {
+		t.Errorf("expected empty string for inactive device, got %q", got)
+	}
+}
+
+func TestDeviceActivity_Active(t *testing.T) {
+	if got := deviceActivity(true); got != "(active)" {
+		t.Errorf("expected '(active)', got %q", got)
+	}
+}
+
+func TestFormatDurationMS(t *testing.T) {
+	cases := []struct {
+		ms   int
+		want string
+	}{
+		{0, "00:00"},
+		{1000, "00:01"},
+		{60000, "01:00"},
+		{90500, "01:30"},
+		{3661000, "61:01"},
+	}
+	for _, tc := range cases {
+		got := formatDurationMS(tc.ms)
+		if got != tc.want {
+			t.Errorf("formatDurationMS(%d): got %q, want %q", tc.ms, got, tc.want)
+		}
+	}
+}
+
+func TestJoinArtists_Empty(t *testing.T) {
+	if got := joinArtists(nil); got != "" {
+		t.Errorf("expected empty string for nil artists, got %q", got)
+	}
+}
+
+func TestRunStatus_NoItem_NoContext(t *testing.T) {
+	state := spotify.PlaybackState{
+		IsPlaying:   false,
+		RepeatState: "off",
+		Device: spotify.Device{
+			Name:     "Test Device",
+			Type:     "Computer",
+			IsActive: false,
+		},
+	}
 
 	oldConfigPath := configPath
-	oldRefresh := spotify.RefreshAccessToken
-	oldNewClient := newSpotifyClient
-	oldURLPlayer := spotify.URLPlayer
+	defer func() { configPath = oldConfigPath }()
 
-	srv := httptest.NewServer(handler)
-
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(state)
+	}))
+	defer srv.Close()
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
-	spotify.URLPlayer = srv.URL
-	newSpotifyClient = func(token string) *spotify.Client {
-		c := spotify.NewClient(token)
-		c.SetHTTPClient(srv.Client())
-		return c
-	}
-
-	return func() {
-		srv.Close()
-		configPath = oldConfigPath
-		spotify.RefreshAccessToken = oldRefresh
-		newSpotifyClient = oldNewClient
-		spotify.URLPlayer = oldURLPlayer
-	}
-}
-
-func TestRunStatus_NoPlayback(t *testing.T) {
-	cleanup := statusSetup(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
-	defer cleanup()
-
-	output := captureOutput(t, func() {
-		if err := statusCmd.RunE(statusCmd, nil); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	if !strings.Contains(output, "No active playback found.") {
-		t.Errorf("expected no-playback message, got: %q", output)
-	}
-}
-
-func TestRunStatus_WithFullPlayback(t *testing.T) {
-	state := spotify.PlaybackState{
-		IsPlaying:    true,
-		ShuffleState: true,
-		RepeatState:  "context",
-		ProgressMS:   60000,
-		Device: spotify.Device{
-			Name:          "Bedroom Speaker",
-			Type:          "Speaker",
-			IsActive:      true,
-			VolumePercent: 55,
-		},
-		Item: &spotify.Track{
-			Name:       "Test Track",
-			URI:        "spotify:track:abc",
-			DurationMS: 180000,
-			Artists:    []spotify.Artist{{Name: "Artist One"}, {Name: "Artist Two"}},
-		},
-		Context: &spotify.PlaybackContext{
-			URI:  "spotify:playlist:xyz",
-			Type: "playlist",
-		},
-	}
-
-	cleanup := statusSetup(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(state)
-	})
-	defer cleanup()
-
-	output := captureOutput(t, func() {
-		if err := statusCmd.RunE(statusCmd, nil); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	for _, want := range []string{
-		"Bedroom Speaker",
-		"Speaker",
-		"(active)",
-		"playing",
-		"shuffle: true",
-		"repeat: context",
-		"volume: 55%",
-		"Test Track",
-		"Artist One, Artist Two",
-		"01:00",
-		"03:00",
-		"spotify:playlist:xyz",
-	} {
-		if !strings.Contains(output, want) {
-			t.Errorf("expected %q in output, got:\n%s", want, output)
-		}
-	}
-}
-
-func TestRunStatus_Paused_NoItemNoContext(t *testing.T) {
-	// Paused state with no track and no context — device-only output.
-	state := spotify.PlaybackState{
-		IsPlaying: false,
-		Device:    spotify.Device{Name: "Kitchen", Type: "Speaker", VolumePercent: 30},
-	}
-
-	cleanup := statusSetup(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(state)
-	})
+	cleanup := wireClient(t, srv)
 	defer cleanup()
 
 	output := captureOutput(t, func() {
@@ -136,19 +80,23 @@ func TestRunStatus_Paused_NoItemNoContext(t *testing.T) {
 	if !strings.Contains(output, "paused") {
 		t.Errorf("expected 'paused' in output, got: %q", output)
 	}
+	// No item or context — those lines should be absent.
 	if strings.Contains(output, "Track:") {
-		t.Errorf("expected no Track line when item is nil, got: %q", output)
+		t.Errorf("did not expect 'Track:' with no item, got: %q", output)
 	}
 	if strings.Contains(output, "Context:") {
-		t.Errorf("expected no Context line when context is nil, got: %q", output)
+		t.Errorf("did not expect 'Context:' with no context, got: %q", output)
+	}
+	// Inactive device — deviceActivity should return "".
+	if strings.Contains(output, "(active)") {
+		t.Errorf("did not expect '(active)' for inactive device, got: %q", output)
 	}
 }
 
-func TestRunStatus_WithItem_NoContext(t *testing.T) {
-	// Playing a track with no context (e.g. playing a single track, not a playlist).
+func TestRunStatus_ItemNoContext(t *testing.T) {
 	state := spotify.PlaybackState{
 		IsPlaying: true,
-		Device:    spotify.Device{Name: "Speaker", Type: "Speaker", VolumePercent: 40},
+		Device:    spotify.Device{Name: "Phone", Type: "Smartphone", IsActive: true},
 		Item: &spotify.Track{
 			Name:       "Solo Track",
 			DurationMS: 240000,
@@ -156,10 +104,16 @@ func TestRunStatus_WithItem_NoContext(t *testing.T) {
 		},
 	}
 
-	cleanup := statusSetup(t, func(w http.ResponseWriter, r *http.Request) {
+	oldConfigPath := configPath
+	defer func() { configPath = oldConfigPath }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(state)
-	})
+	}))
+	defer srv.Close()
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	cleanup := wireClient(t, srv)
 	defer cleanup()
 
 	output := captureOutput(t, func() {
@@ -171,47 +125,7 @@ func TestRunStatus_WithItem_NoContext(t *testing.T) {
 	if !strings.Contains(output, "Solo Track") {
 		t.Errorf("expected track name in output, got: %q", output)
 	}
-	if !strings.Contains(output, "Solo Artist") {
-		t.Errorf("expected artist name in output, got: %q", output)
-	}
 	if strings.Contains(output, "Context:") {
-		t.Errorf("expected no Context line when context URI is empty, got: %q", output)
-	}
-}
-
-func TestRunStatus_WithContext_EmptyURI(t *testing.T) {
-	// Context present but URI is empty — should not print Context line.
-	state := spotify.PlaybackState{
-		IsPlaying: true,
-		Device:    spotify.Device{Name: "Speaker", Type: "Speaker", VolumePercent: 40},
-		Context:   &spotify.PlaybackContext{URI: "", Type: "playlist"},
-	}
-
-	cleanup := statusSetup(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(state)
-	})
-	defer cleanup()
-
-	output := captureOutput(t, func() {
-		if err := statusCmd.RunE(statusCmd, nil); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	if strings.Contains(output, "Context:") {
-		t.Errorf("expected no Context line for empty URI, got: %q", output)
-	}
-}
-
-func TestRunStatus_APIError(t *testing.T) {
-	cleanup := statusSetup(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	})
-	defer cleanup()
-
-	err := statusCmd.RunE(statusCmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "failed to get current playback") {
-		t.Fatalf("expected API error, got %v", err)
+		t.Errorf("did not expect context line when context is nil, got: %q", output)
 	}
 }

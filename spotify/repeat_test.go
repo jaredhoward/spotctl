@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestSetRepeat(t *testing.T) {
+func TestRepeat(t *testing.T) {
 	oldURLPlayer := URLPlayer
 	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
@@ -35,7 +35,7 @@ func TestSetRepeat(t *testing.T) {
 
 			URLPlayer = server.URL
 			client := &Client{accessToken: "t", httpClient: server.Client()}
-			if err := client.SetRepeat(tc.deviceID, tc.state); err != nil {
+			if err := client.Repeat(tc.deviceID, tc.state); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if gotState != tc.state {

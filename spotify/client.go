@@ -80,13 +80,8 @@ func (c *Client) TransferPlayback(deviceIDs []string, play bool) error {
 	return c.doExpectSuccess(req, "transfer playback")
 }
 
-// Shuffle enables shuffle on a device. Kept for backward compatibility.
-func (c *Client) Shuffle(deviceID string) error {
-	return c.SetShuffle(deviceID, true)
-}
-
-// SetShuffle enables or disables shuffle. device_id is optional.
-func (c *Client) SetShuffle(deviceID string, enabled bool) error {
+// Shuffle enables or disables shuffle. device_id is optional.
+func (c *Client) Shuffle(deviceID string, enabled bool) error {
 	params := url.Values{"state": {fmt.Sprintf("%t", enabled)}}
 	if deviceID != "" {
 		params.Set("device_id", deviceID)
@@ -101,7 +96,7 @@ func (c *Client) SetShuffle(deviceID string, enabled bool) error {
 
 // SetRepeat sets the repeat mode. state must be "off", "track", or "context".
 // device_id is optional.
-func (c *Client) SetRepeat(deviceID, state string) error {
+func (c *Client) Repeat(deviceID, state string) error {
 	params := url.Values{"state": {state}}
 	if deviceID != "" {
 		params.Set("device_id", deviceID)
@@ -141,7 +136,7 @@ func (c *Client) Previous(deviceID string) error {
 	return c.doExpectSuccess(req, "previous")
 }
 
-func (c *Client) SetVolume(deviceID string, volumePercent int) error {
+func (c *Client) Volume(deviceID string, volumePercent int) error {
 	params := url.Values{"volume_percent": {fmt.Sprintf("%d", volumePercent)}}
 	if deviceID != "" {
 		params.Set("device_id", deviceID)

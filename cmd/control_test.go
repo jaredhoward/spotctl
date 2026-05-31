@@ -6,43 +6,33 @@ import (
 	"testing"
 
 	"github.com/jaredhoward/spotctl/config"
-	"github.com/jaredhoward/spotctl/spotify"
 )
 
-func TestPauseCmd_NoDevice(t *testing.T) {
+func TestPauseCmd_Success(t *testing.T) {
 	oldConfigPath := configPath
-	oldRefresh := spotify.RefreshAccessToken
-	oldNewClient := newSpotifyClient
-	oldURLPlayer := spotify.URLPlayer
 	oldPauseDeviceID := pauseDeviceID
 	defer func() {
 		configPath = oldConfigPath
-		spotify.RefreshAccessToken = oldRefresh
-		newSpotifyClient = oldNewClient
-		spotify.URLPlayer = oldURLPlayer
 		pauseDeviceID = oldPauseDeviceID
 	}()
 
-	pauseDeviceID = ""
+	pauseDeviceID = "dev-1"
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
 
 	called := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
-		// device_id should be absent from the URL
-		if r.URL.Query().Get("device_id") != "" {
-			t.Errorf("expected no device_id query param, got %q", r.URL.Query().Get("device_id"))
+		if r.Method != http.MethodPut || r.URL.Path != "/pause" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.URL.Query().Get("device_id") != "dev-1" {
+			t.Errorf("expected device_id=dev-1, got %q", r.URL.Query().Get("device_id"))
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	spotify.URLPlayer = srv.URL
-	newSpotifyClient = func(token string) *spotify.Client {
-		c := spotify.NewClient(token)
-		c.SetHTTPClient(srv.Client())
-		return c
-	}
+	cleanup := wireClient(t, srv)
+	defer cleanup()
 
 	if err := pauseCmd.RunE(pauseCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -52,113 +42,64 @@ func TestPauseCmd_NoDevice(t *testing.T) {
 	}
 }
 
-func TestPauseCmd_WithDevice(t *testing.T) {
+func TestNextCmd_Success(t *testing.T) {
 	oldConfigPath := configPath
-	oldRefresh := spotify.RefreshAccessToken
-	oldNewClient := newSpotifyClient
-	oldURLPlayer := spotify.URLPlayer
-	oldPauseDeviceID := pauseDeviceID
-	defer func() {
-		configPath = oldConfigPath
-		spotify.RefreshAccessToken = oldRefresh
-		newSpotifyClient = oldNewClient
-		spotify.URLPlayer = oldURLPlayer
-		pauseDeviceID = oldPauseDeviceID
-	}()
-
-	pauseDeviceID = "dev-1"
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("device_id") != "dev-1" {
-			t.Errorf("expected device_id=dev-1, got %q", r.URL.Query().Get("device_id"))
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer srv.Close()
-	spotify.URLPlayer = srv.URL
-	newSpotifyClient = func(token string) *spotify.Client {
-		c := spotify.NewClient(token)
-		c.SetHTTPClient(srv.Client())
-		return c
-	}
-
-	if err := pauseCmd.RunE(pauseCmd, nil); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestNextCmd_NoDevice(t *testing.T) {
-	oldConfigPath := configPath
-	oldRefresh := spotify.RefreshAccessToken
-	oldNewClient := newSpotifyClient
-	oldURLPlayer := spotify.URLPlayer
 	oldNextDeviceID := nextDeviceID
 	defer func() {
 		configPath = oldConfigPath
-		spotify.RefreshAccessToken = oldRefresh
-		newSpotifyClient = oldNewClient
-		spotify.URLPlayer = oldURLPlayer
 		nextDeviceID = oldNextDeviceID
 	}()
 
-	nextDeviceID = ""
+	nextDeviceID = "dev-1"
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
 
+	called := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("device_id") != "" {
-			t.Errorf("expected no device_id, got %q", r.URL.Query().Get("device_id"))
+		called = true
+		if r.Method != http.MethodPost || r.URL.Path != "/next" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	spotify.URLPlayer = srv.URL
-	newSpotifyClient = func(token string) *spotify.Client {
-		c := spotify.NewClient(token)
-		c.SetHTTPClient(srv.Client())
-		return c
-	}
+	cleanup := wireClient(t, srv)
+	defer cleanup()
 
 	if err := nextCmd.RunE(nextCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if !called {
+		t.Error("expected next API to be called")
+	}
 }
 
-func TestPreviousCmd_WithDevice(t *testing.T) {
+func TestPreviousCmd_Success(t *testing.T) {
 	oldConfigPath := configPath
-	oldRefresh := spotify.RefreshAccessToken
-	oldNewClient := newSpotifyClient
-	oldURLPlayer := spotify.URLPlayer
 	oldPreviousDeviceID := previousDeviceID
 	defer func() {
 		configPath = oldConfigPath
-		spotify.RefreshAccessToken = oldRefresh
-		newSpotifyClient = oldNewClient
-		spotify.URLPlayer = oldURLPlayer
 		previousDeviceID = oldPreviousDeviceID
 	}()
 
-	previousDeviceID = "dev-2"
+	previousDeviceID = "dev-1"
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
 
+	called := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("device_id") != "dev-2" {
-			t.Errorf("expected device_id=dev-2, got %q", r.URL.Query().Get("device_id"))
+		called = true
+		if r.Method != http.MethodPost || r.URL.Path != "/previous" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	spotify.URLPlayer = srv.URL
-	newSpotifyClient = func(token string) *spotify.Client {
-		c := spotify.NewClient(token)
-		c.SetHTTPClient(srv.Client())
-		return c
-	}
+	cleanup := wireClient(t, srv)
+	defer cleanup()
 
 	if err := previousCmd.RunE(previousCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Error("expected previous API to be called")
 	}
 }

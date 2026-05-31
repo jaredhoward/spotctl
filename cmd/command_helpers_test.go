@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"bytes"
 	"io"
 	"os"
 	"strings"
@@ -11,12 +10,15 @@ import (
 	"github.com/jaredhoward/spotctl/config"
 )
 
-func TestExistingValue(t *testing.T) {
-	if got := existingValue(&config.Config{ClientID: "new"}, func(c *config.Config) string { return c.ClientID }); got != "new" {
-		t.Fatalf("expected new value, got %q", got)
-	}
+func TestExistingValue_Nil(t *testing.T) {
 	if got := existingValue(nil, func(c *config.Config) string { return c.ClientID }); got != "" {
-		t.Fatalf("expected old value, got %q", got)
+		t.Fatalf("expected empty for nil config, got %q", got)
+	}
+}
+
+func TestExistingValue_NonNil(t *testing.T) {
+	if got := existingValue(&config.Config{ClientID: "abc"}, func(c *config.Config) string { return c.ClientID }); got != "abc" {
+		t.Fatalf("expected abc, got %q", got)
 	}
 }
 
@@ -41,11 +43,9 @@ func TestPromptWithDefault(t *testing.T) {
 
 func TestSetVersionAndExecuteVersion(t *testing.T) {
 	oldVersion := appVersion
-	oldArgs := rootCmd.Args
 	defer func() {
 		SetVersion(oldVersion)
 		rootCmd.SetArgs([]string{})
-		rootCmd.Args = oldArgs
 	}()
 
 	SetVersion("v1.2.3")
@@ -69,7 +69,7 @@ func TestSetVersionAndExecuteVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if string(bytes.TrimSpace(output)) != "v1.2.3" {
+	if strings.TrimSpace(string(output)) != "v1.2.3" {
 		t.Fatalf("expected version output, got %q", string(output))
 	}
 }

@@ -15,20 +15,6 @@ import (
 	"github.com/jaredhoward/spotctl/spotify"
 )
 
-func writeTempConfig(t *testing.T, cfg *config.Config) string {
-	t.Helper()
-	file, err := os.CreateTemp("", "spotctl-*.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	file.Close()
-	t.Cleanup(func() { os.Remove(file.Name()) })
-	if err := config.Save(file.Name(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	return file.Name()
-}
-
 func resetPlayCmdFlags(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{"uri", "playlist", "track", "album", "artist"} {
@@ -88,21 +74,14 @@ func captureOutputAndLogs(t *testing.T, fn func()) (stdout, logs string) {
 
 func TestPlayCmdRunE_NoDevice(t *testing.T) {
 	oldConfigPath := configPath
-	oldRefresh := spotify.RefreshAccessToken
-	oldNewClient := newSpotifyClient
-	oldURLPlayer := spotify.URLPlayer
 	oldPlayDeviceID := playDeviceID
 	defer func() {
 		configPath = oldConfigPath
-		spotify.RefreshAccessToken = oldRefresh
-		newSpotifyClient = oldNewClient
-		spotify.URLPlayer = oldURLPlayer
 		playDeviceID = oldPlayDeviceID
 	}()
 
 	playDeviceID = ""
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
 	resetPlayCmdFlags(t)
 
 	called := false
@@ -114,12 +93,8 @@ func TestPlayCmdRunE_NoDevice(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	spotify.URLPlayer = srv.URL
-	newSpotifyClient = func(token string) *spotify.Client {
-		c := spotify.NewClient(token)
-		c.SetHTTPClient(srv.Client())
-		return c
-	}
+	cleanup := wireClient(t, srv)
+	defer cleanup()
 
 	if err := playCmd.RunE(playCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -131,21 +106,14 @@ func TestPlayCmdRunE_NoDevice(t *testing.T) {
 
 func TestPlayCmdRunE_WithDevice(t *testing.T) {
 	oldConfigPath := configPath
-	oldRefresh := spotify.RefreshAccessToken
-	oldNewClient := newSpotifyClient
-	oldURLPlayer := spotify.URLPlayer
 	oldPlayDeviceID := playDeviceID
 	defer func() {
 		configPath = oldConfigPath
-		spotify.RefreshAccessToken = oldRefresh
-		newSpotifyClient = oldNewClient
-		spotify.URLPlayer = oldURLPlayer
 		playDeviceID = oldPlayDeviceID
 	}()
 
 	playDeviceID = "device-1"
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
 	resetPlayCmdFlags(t)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -155,12 +123,8 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	spotify.URLPlayer = srv.URL
-	newSpotifyClient = func(token string) *spotify.Client {
-		c := spotify.NewClient(token)
-		c.SetHTTPClient(srv.Client())
-		return c
-	}
+	cleanup := wireClient(t, srv)
+	defer cleanup()
 
 	if err := playCmd.RunE(playCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -180,16 +144,10 @@ func TestTransferCmdRunE_RequiresDevice(t *testing.T) {
 
 func TestTransferCmdRunE_Success(t *testing.T) {
 	oldConfigPath := configPath
-	oldRefresh := spotify.RefreshAccessToken
-	oldNewClient := newSpotifyClient
-	oldURLPlayer := spotify.URLPlayer
 	oldTransferDeviceID := transferDeviceID
 	oldTransferPlay := transferPlay
 	defer func() {
 		configPath = oldConfigPath
-		spotify.RefreshAccessToken = oldRefresh
-		newSpotifyClient = oldNewClient
-		spotify.URLPlayer = oldURLPlayer
 		transferDeviceID = oldTransferDeviceID
 		transferPlay = oldTransferPlay
 	}()
@@ -197,7 +155,6 @@ func TestTransferCmdRunE_Success(t *testing.T) {
 	transferDeviceID = "device-1"
 	transferPlay = true
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload map[string]interface{}
@@ -214,12 +171,8 @@ func TestTransferCmdRunE_Success(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	spotify.URLPlayer = srv.URL
-	newSpotifyClient = func(token string) *spotify.Client {
-		c := spotify.NewClient(token)
-		c.SetHTTPClient(srv.Client())
-		return c
-	}
+	cleanup := wireClient(t, srv)
+	defer cleanup()
 
 	if err := transferCmd.RunE(transferCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -252,15 +205,9 @@ func TestVolumeCmdRunE_InvalidLevel(t *testing.T) {
 
 func TestVolumeCmdRunE_Success(t *testing.T) {
 	oldConfigPath := configPath
-	oldRefresh := spotify.RefreshAccessToken
-	oldNewClient := newSpotifyClient
-	oldURLPlayer := spotify.URLPlayer
 	oldVolumeDeviceID := volumeDeviceID
 	defer func() {
 		configPath = oldConfigPath
-		spotify.RefreshAccessToken = oldRefresh
-		newSpotifyClient = oldNewClient
-		spotify.URLPlayer = oldURLPlayer
 		volumeDeviceID = oldVolumeDeviceID
 		resetVolumeCmdFlags(t)
 	}()
@@ -270,7 +217,6 @@ func TestVolumeCmdRunE_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("device_id") != "device-1" {
@@ -282,14 +228,89 @@ func TestVolumeCmdRunE_Success(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	spotify.URLPlayer = srv.URL
-	newSpotifyClient = func(token string) *spotify.Client {
-		c := spotify.NewClient(token)
-		c.SetHTTPClient(srv.Client())
-		return c
-	}
+	cleanup := wireClient(t, srv)
+	defer cleanup()
 
 	if err := volumeCmd.RunE(volumeCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ----- status command --------------------------------------------------------
+
+func TestRunStatus_NoPlayback(t *testing.T) {
+	oldConfigPath := configPath
+	defer func() { configPath = oldConfigPath }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	cleanup := wireClient(t, srv)
+	defer cleanup()
+
+	output := captureOutput(t, func() {
+		if err := statusCmd.RunE(statusCmd, nil); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "No active playback found.") {
+		t.Errorf("expected no-playback message, got: %q", output)
+	}
+}
+
+func TestRunStatus_WithFullPlayback(t *testing.T) {
+	state := spotify.PlaybackState{
+		IsPlaying:    true,
+		ShuffleState: true,
+		RepeatState:  "context",
+		ProgressMS:   60000,
+		Device: spotify.Device{
+			Name:          "Bedroom Speaker",
+			Type:          "Speaker",
+			IsActive:      true,
+			VolumePercent: 55,
+		},
+		Item: &spotify.Track{
+			Name:       "Test Track",
+			URI:        "spotify:track:abc",
+			DurationMS: 180000,
+			Artists:    []spotify.Artist{{Name: "Artist One"}, {Name: "Artist Two"}},
+		},
+		Context: &spotify.PlaybackContext{
+			URI:  "spotify:playlist:xyz",
+			Type: "playlist",
+		},
+	}
+
+	oldConfigPath := configPath
+	defer func() { configPath = oldConfigPath }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(state)
+	}))
+	defer srv.Close()
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	cleanup := wireClient(t, srv)
+	defer cleanup()
+
+	output := captureOutput(t, func() {
+		if err := statusCmd.RunE(statusCmd, nil); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	for _, want := range []string{
+		"Bedroom Speaker", "Speaker", "(active)", "playing",
+		"shuffle: true", "repeat: context", "volume: 55%",
+		"Test Track", "Artist One, Artist Two",
+		"01:00", "03:00", "spotify:playlist:xyz",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, output)
+		}
 	}
 }

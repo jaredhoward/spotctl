@@ -119,18 +119,22 @@ func TestVolumePauseNextPreviousShuffle(t *testing.T) {
 		invoke  func(*Client) error
 	}{
 		{
-			name:    "set volume with device",
-			path:    "/volume",
-			method:  http.MethodPut,
-			handler: func(r *http.Request) bool { return r.URL.Query().Get("volume_percent") == "42" && r.URL.Query().Get("device_id") == "device" },
-			invoke:  func(c *Client) error { return c.SetVolume("device", 42) },
+			name:   "set volume with device",
+			path:   "/volume",
+			method: http.MethodPut,
+			handler: func(r *http.Request) bool {
+				return r.URL.Query().Get("volume_percent") == "42" && r.URL.Query().Get("device_id") == "device"
+			},
+			invoke: func(c *Client) error { return c.Volume("device", 42) },
 		},
 		{
-			name:    "set volume without device",
-			path:    "/volume",
-			method:  http.MethodPut,
-			handler: func(r *http.Request) bool { return r.URL.Query().Get("volume_percent") == "10" && r.URL.Query().Get("device_id") == "" },
-			invoke:  func(c *Client) error { return c.SetVolume("", 10) },
+			name:   "set volume without device",
+			path:   "/volume",
+			method: http.MethodPut,
+			handler: func(r *http.Request) bool {
+				return r.URL.Query().Get("volume_percent") == "10" && r.URL.Query().Get("device_id") == ""
+			},
+			invoke: func(c *Client) error { return c.Volume("", 10) },
 		},
 		{
 			name:    "pause with device",
@@ -175,18 +179,22 @@ func TestVolumePauseNextPreviousShuffle(t *testing.T) {
 			invoke:  func(c *Client) error { return c.Previous("") },
 		},
 		{
-			name:    "shuffle enabled with device",
-			path:    "/shuffle",
-			method:  http.MethodPut,
-			handler: func(r *http.Request) bool { return r.URL.Query().Get("state") == "true" && r.URL.Query().Get("device_id") == "device" },
-			invoke:  func(c *Client) error { return c.Shuffle("device") },
+			name:   "shuffle enabled with device",
+			path:   "/shuffle",
+			method: http.MethodPut,
+			handler: func(r *http.Request) bool {
+				return r.URL.Query().Get("state") == "true" && r.URL.Query().Get("device_id") == "device"
+			},
+			invoke: func(c *Client) error { return c.Shuffle("device", true) },
 		},
 		{
-			name:    "shuffle disabled without device",
-			path:    "/shuffle",
-			method:  http.MethodPut,
-			handler: func(r *http.Request) bool { return r.URL.Query().Get("state") == "false" && r.URL.Query().Get("device_id") == "" },
-			invoke:  func(c *Client) error { return c.SetShuffle("", false) },
+			name:   "shuffle disabled without device",
+			path:   "/shuffle",
+			method: http.MethodPut,
+			handler: func(r *http.Request) bool {
+				return r.URL.Query().Get("state") == "false" && r.URL.Query().Get("device_id") == ""
+			},
+			invoke: func(c *Client) error { return c.Shuffle("", false) },
 		},
 	}
 

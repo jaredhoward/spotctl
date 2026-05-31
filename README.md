@@ -4,7 +4,7 @@ A Spotify Connect controller CLI, built in Go.
 
 ## Overview
 
-`spotctl` controls Spotify playback via the Spotify Web API. While `spotctl` is a stand-alone application, it is designed to be called from automation tools like Home Assistant `shell_command` entries, enabling reliable cold-start playback on Spotify Connect devices without relying on third-party integrations.
+`spotctl` controls Spotify playback via the Spotify Web API. While `spotctl` is a stand-alone application, its original intention was to be called from automation tools like Home Assistant `shell_command` entries, enabling reliable playback on Spotify Connect devices.
 
 ## Requirements
 
@@ -50,7 +50,7 @@ refresh_token: YOUR_REFRESH_TOKEN
 redirect_uri: https://your-redirect-uri
 
 sets:
-  sleep_shuffle:
+  random_sleep:
     device_id: DEVICE_ID
     commands:
       - action: play
@@ -111,10 +111,13 @@ Each command in a set has:
 | `volume` | `level` | `device_id` | `device.volume_percent = level` |
 | `transfer` | — | `device_id`, `play` (default `false`) | `device.id = device_id` |
 | `run_set` | `set` | — | inner set completes |
+| `sleep` | `duration` | — | — |
 
-For `play`, use one of `uri`, `playlist`, `track`, or `album` — not more than one. `playlist`, `track`, and `album` are shorthand for the corresponding `spotify:TYPE:ID` URI.
+Notes:
 
-`repeat_state` must be one of `off`, `track`, or `context`.
+- For `play`, use one of `uri`, `playlist`, `track`, or `album` — not more than one. `playlist`, `track`, and `album` are shorthand for the corresponding `spotify:TYPE:ID` URI.
+- `repeat_state` must be one of `off`, `track`, or `context`.
+- `sleep` pauses execution for the specified duration (e.g. `30s`, `1m`). No Spotify API call is made. `confirm` has no effect.
 
 ### 3. Discover and persist device names
 
@@ -141,7 +144,7 @@ spotctl sets --config ./config.yaml
 
 Run a set:
 ```bash
-spotctl run sleep_shuffle --config ./config.yaml
+spotctl run random_sleep --config ./config.yaml
 ```
 
 One-off playback commands:
@@ -298,7 +301,7 @@ Copy `config.yaml` to `/config/scripts/config.yaml` on your HA instance.
 ### `shell_commands.yaml`
 
 ```yaml
-spotctl_sleep: /config/scripts/spotctl run sleep_shuffle --config /config/scripts/config.yaml
+spotctl_random_sleep: /config/scripts/spotctl run random_sleep --config /config/scripts/config.yaml
 ```
 
 ### HA Script
@@ -318,7 +321,7 @@ sequence:
     target:
       entity_id: media_player.master_bedroom_speaker
     continue_on_error: true
-  - action: shell_command.spotctl_sleep
+  - action: shell_command.spotctl_random_sleep
     # spotctl blocks here until Spotify confirms playback has started
     # (because confirm: true is set on the play command in the set).
     continue_on_error: false

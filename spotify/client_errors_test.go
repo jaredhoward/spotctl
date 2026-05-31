@@ -22,7 +22,7 @@ func TestShuffleErrorStatus(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	if err := client.Shuffle("device"); err == nil {
+	if err := client.Shuffle("device", true); err == nil {
 		t.Fatal("expected error for non-2xx shuffle response")
 	}
 }
@@ -38,7 +38,7 @@ func TestShuffleOKStatus(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	if err := client.Shuffle("device"); err != nil {
+	if err := client.Shuffle("device", true); err != nil {
 		t.Fatalf("unexpected error for 200 shuffle response: %v", err)
 	}
 }
@@ -122,7 +122,7 @@ func TestSetVolumeErrorStatus(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	if err := client.SetVolume("device", 50); err == nil {
+	if err := client.Volume("device", 50); err == nil {
 		t.Fatal("expected error for forbidden set-volume response")
 	}
 }

@@ -1,4 +1,4 @@
-package cmd
+package runner
 
 import (
 	"fmt"
@@ -9,13 +9,13 @@ import (
 	"github.com/jaredhoward/spotctl/spotify"
 )
 
-// dispatchAction is the single execution point for every Spotify command,
+// DispatchAction is the single execution point for every Spotify command,
 // whether invoked from a CLI verb or a set. The device_id in p is already
 // resolved (command-level wins over set-level; empty means active device).
-func dispatchAction(p config.CommandParams, action string, client *spotify.Client, cfg *config.Config, depth int) error {
+func DispatchAction(p config.CommandParams, action string, client *spotify.Client, cfg *config.Config, depth int) error {
 	switch action {
 	case "play":
-		contextURI, err := resolveURIFromParams(p)
+		contextURI, err := ResolveURIFromParams(p)
 		if err != nil {
 			return err
 		}
@@ -31,13 +31,13 @@ func dispatchAction(p config.CommandParams, action string, client *spotify.Clien
 		return client.Previous(p.DeviceID)
 
 	case "shuffle":
-		return client.SetShuffle(p.DeviceID, p.ShuffleEnabled())
+		return client.Shuffle(p.DeviceID, p.ShuffleEnabled())
 
 	case "repeat":
-		return client.SetRepeat(p.DeviceID, p.RepeatState)
+		return client.Repeat(p.DeviceID, p.RepeatState)
 
 	case "volume":
-		return client.SetVolume(p.DeviceID, *p.Level)
+		return client.Volume(p.DeviceID, *p.Level)
 
 	case "transfer":
 		return client.TransferPlayback([]string{p.DeviceID}, p.TransferPlay())
@@ -53,16 +53,16 @@ func dispatchAction(p config.CommandParams, action string, client *spotify.Clien
 		if !ok {
 			return fmt.Errorf("set %q not found", p.Set)
 		}
-		return runSet(p.Set, sub, cfg, client, depth+1)
+		return RunSet(p.Set, sub, cfg, client, depth+1)
 
 	default:
 		return fmt.Errorf("unknown action %q", action)
 	}
 }
 
-// resolveURIFromParams builds a Spotify context URI from the convenience
+// ResolveURIFromParams builds a Spotify context URI from the convenience
 // fields in CommandParams. Returns an error if more than one is set.
-func resolveURIFromParams(p config.CommandParams) (string, error) {
+func ResolveURIFromParams(p config.CommandParams) (string, error) {
 	count := 0
 	if p.URI != "" {
 		count++

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/jaredhoward/spotctl/config"
+	"github.com/jaredhoward/spotctl/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +35,7 @@ func runVolume(cmd *cobra.Command, args []string) error {
 		Level:    &volumeLevel,
 	}
 
-	if err := dispatchAction(p, "volume", client, nil, 0); err != nil {
+	if err := runner.DispatchAction(p, "volume", client, nil, 0); err != nil {
 		return fmt.Errorf("volume failed: %w", err)
 	}
 	return nil

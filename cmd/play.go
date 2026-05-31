@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/jaredhoward/spotctl/config"
+	"github.com/jaredhoward/spotctl/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -38,12 +39,14 @@ func runPlay(cmd *cobra.Command, args []string) error {
 		URI:      contextURI,
 	}
 
-	if err := dispatchAction(p, "play", client, nil, 0); err != nil {
+	if err := runner.DispatchAction(p, "play", client, nil, 0); err != nil {
 		return fmt.Errorf("play failed: %w", err)
 	}
 	return nil
 }
 
+// resolveURI validates that at most one URI-type flag was set and builds the
+// full Spotify URI string from whichever shorthand flag was used.
 func resolveURI(cmd *cobra.Command, uri, playlistID, trackID, albumID, artistID string) (string, error) {
 	set := []string{}
 	if cmd.Flags().Changed("uri") {
