@@ -6,8 +6,8 @@ spotctl-*
 spotify.yaml
 config.yaml
 
-# Local environment
-.env
+# Deployment script
+deploy.sh
 
 # macOS
 .DS_Store

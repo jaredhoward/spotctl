@@ -1,11 +1,5 @@
 BINARY=spotctl
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-HA_PATH=/config/scripts/$(BINARY)
-
--include .env
-
-HA_USER?=root
-HA_HOST?=homeassistant.local
 
 build:
 	go build -ldflags "-X main.version=$(VERSION)" -o $(BINARY) .
@@ -20,4 +14,4 @@ check-tag:
 clean:
 	rm -f $(BINARY) $(BINARY)-*
 
-.PHONY: build build-ha check-tag deploy clean
+.PHONY: build build-ha-green check-tag clean

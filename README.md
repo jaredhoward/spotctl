@@ -26,7 +26,7 @@ make build
 ### Cross-compile for Linux x86_64 (e.g. Home Assistant Green)
 
 ```bash
-make build-ha
+make build-ha-green
 ```
 
 ## Setup
@@ -39,7 +39,31 @@ spotctl setup --config ./config.yaml
 
 This will prompt for your Spotify Client ID, Client Secret, and Redirect URI (which must match one configured in your Spotify app), then walk through the OAuth flow and generate a `config.yaml` file.
 
-### 2. Add sets to `config.yaml`
+### 2. Discover and persist device IDs
+
+Before configuring sets, find the device IDs of your Spotify Connect devices:
+
+```bash
+spotctl devices --config ./config.yaml
+```
+
+If a device isn't listed, Spotify may not be aware of it. Open the Spotify app and connect to the device from there first. Once Spotify recognizes it, it will appear in the list.
+
+Some devices stop reporting a friendly name when inactive. Use `--update` to persist their names to `config.yaml` so the `devices` output stays readable:
+
+```bash
+spotctl devices --update --config ./config.yaml
+```
+
+This adds or updates a `device_names` mapping in `config.yaml`:
+
+```yaml
+device_names:
+  a70e...: "Living Room Speaker"
+  7b9a...: "Kitchen Echo"
+```
+
+### 3. Add sets to `config.yaml`
 
 Sets are named sequences of Spotify commands. A set can be as simple as a single play command or as complex as a multi-step routine with confirmation and error handling. Run a set with `spotctl run <name>`, or list all configured sets with `spotctl sets`.
 
@@ -69,12 +93,6 @@ sets:
           repeat_state: context
         confirm: true
         timeout: 5s
-```
-
-To find your device ID, use the `devices` command:
-
-```bash
-spotctl devices --config ./config.yaml
 ```
 
 #### Set-level fields
@@ -118,22 +136,6 @@ Notes:
 - For `play`, use one of `uri`, `playlist`, `track`, or `album` — not more than one. `playlist`, `track`, and `album` are shorthand for the corresponding `spotify:TYPE:ID` URI.
 - `repeat_state` must be one of `off`, `track`, or `context`.
 - `sleep` pauses execution for the specified duration (e.g. `30s`, `1m`). No Spotify API call is made. `confirm` has no effect.
-
-### 3. Discover and persist device names
-
-Some Spotify Connect devices stop reporting a friendly name when they become inactive. `spotctl` can persist device names so the `devices` output remains readable even when Spotify omits the name.
-
-```bash
-spotctl devices --update --config ./config.yaml
-```
-
-This adds or updates a `device_names` mapping in `config.yaml`:
-
-```yaml
-device_names:
-  a70e...: "Living Room Speaker"
-  7b9a...: "Kitchen Echo"
-```
 
 ### 4. Test
 
@@ -288,16 +290,6 @@ Existing sets and device names will be preserved and credentials pre-filled for 
 
 ## Home Assistant Integration
 
-### Deploy
-
-Cross-compile and copy the binary to your HA instance:
-
-```bash
-make deploy
-```
-
-Copy `config.yaml` to `/config/scripts/config.yaml` on your HA instance.
-
 ### `shell_commands.yaml`
 
 ```yaml
@@ -356,18 +348,4 @@ This works well for devices that Home Assistant cannot control directly. When HA
 
 ## Security
 
-`config.yaml` contains sensitive credentials and is excluded from version control via `.gitignore`. Never commit it to a public repository.
-
-## Local Development
-
-Copy `.env.example` to `.env` and fill in your HA details for deployment:
-
-```bash
-cp .env.example .env
-```
-
-`.env`:
-```
-HA_USER=root
-HA_HOST=homeassistant.local
-```
+Your `config.yaml` will contain sensitive credentials and should be excluded from version control via `.gitignore`. Never commit it to a public repository.
