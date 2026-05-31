@@ -45,13 +45,13 @@ func CommandLabel(n int, c config.Command) string {
 			parts = append(parts, fmt.Sprintf("artist=%s", c.Params.ArtistID))
 		}
 	case "transfer":
-		if c.Params.DeviceID != "" {
-			parts = append(parts, fmt.Sprintf("device=%s", c.Params.DeviceID))
+		if c.DeviceID != "" {
+			parts = append(parts, fmt.Sprintf("device=%s", c.DeviceID))
 		}
 	}
 
-	if c.Params.DeviceID != "" && c.Action != "transfer" {
-		parts = append(parts, fmt.Sprintf("device=%s", c.Params.DeviceID))
+	if c.DeviceID != "" && c.Action != "transfer" {
+		parts = append(parts, fmt.Sprintf("device=%s", c.DeviceID))
 	}
 	if c.Confirm {
 		parts = append(parts, "confirm")

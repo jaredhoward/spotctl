@@ -24,7 +24,7 @@ var pauseCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := runner.DispatchAction(config.CommandParams{DeviceID: pauseDeviceID}, "pause", client, nil, 0); err != nil {
+		if err := runner.DispatchAction(config.CommandParams{}, "pause", pauseDeviceID, client, nil, 0); err != nil {
 			return fmt.Errorf("pause failed: %w", err)
 		}
 		return nil
@@ -39,7 +39,7 @@ var nextCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := runner.DispatchAction(config.CommandParams{DeviceID: nextDeviceID}, "next", client, nil, 0); err != nil {
+		if err := runner.DispatchAction(config.CommandParams{}, "next", nextDeviceID, client, nil, 0); err != nil {
 			return fmt.Errorf("next failed: %w", err)
 		}
 		return nil
@@ -54,7 +54,7 @@ var previousCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := runner.DispatchAction(config.CommandParams{DeviceID: previousDeviceID}, "previous", client, nil, 0); err != nil {
+		if err := runner.DispatchAction(config.CommandParams{}, "previous", previousDeviceID, client, nil, 0); err != nil {
 			return fmt.Errorf("previous failed: %w", err)
 		}
 		return nil
@@ -70,10 +70,9 @@ var shuffleCmd = &cobra.Command{
 			return err
 		}
 		p := config.CommandParams{
-			DeviceID: shuffleDeviceID,
-			Enabled:  &shuffleEnabled,
+			Enabled: &shuffleEnabled,
 		}
-		if err := runner.DispatchAction(p, "shuffle", client, nil, 0); err != nil {
+		if err := runner.DispatchAction(p, "shuffle", shuffleDeviceID, client, nil, 0); err != nil {
 			return fmt.Errorf("shuffle failed: %w", err)
 		}
 		return nil
@@ -92,10 +91,9 @@ var repeatCmd = &cobra.Command{
 			return err
 		}
 		p := config.CommandParams{
-			DeviceID:    repeatDeviceID,
 			RepeatState: repeatState,
 		}
-		if err := runner.DispatchAction(p, "repeat", client, nil, 0); err != nil {
+		if err := runner.DispatchAction(p, "repeat", repeatDeviceID, client, nil, 0); err != nil {
 			return fmt.Errorf("repeat failed: %w", err)
 		}
 		return nil

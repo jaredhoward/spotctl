@@ -148,11 +148,11 @@ func TestSetRoundTrip(t *testing.T) {
 // ----- ResolvedDeviceID ------------------------------------------------------
 
 func TestResolvedDeviceID(t *testing.T) {
-	c := Command{Params: CommandParams{DeviceID: "cmd-dev"}}
+	c := Command{DeviceID: "cmd-dev", Params: CommandParams{}}
 	if got := c.ResolvedDeviceID("set-dev"); got != "cmd-dev" {
 		t.Errorf("expected cmd-dev, got %q", got)
 	}
-	c.Params.DeviceID = ""
+	c.DeviceID = ""
 	if got := c.ResolvedDeviceID("set-dev"); got != "set-dev" {
 		t.Errorf("expected set-dev, got %q", got)
 	}
@@ -259,20 +259,18 @@ func TestValidateAllActions(t *testing.T) {
 		wantErr bool
 	}{
 		{"play", CommandParams{}, false},
-		{"play", CommandParams{DeviceID: "d"}, false},
+		{"play", CommandParams{URI: "spotify:track:123"}, false},
+		{"play", CommandParams{PlaylistID: "pl123"}, false},
+		{"play", CommandParams{TrackID: "tr456"}, false},
+		{"play", CommandParams{AlbumID: "al789"}, false},
+		{"play", CommandParams{ArtistID: "ar123"}, false},
 		{"pause", CommandParams{}, false},
-		{"pause", CommandParams{DeviceID: "d"}, false},
 		{"next", CommandParams{}, false},
-		{"next", CommandParams{DeviceID: "d"}, false},
 		{"previous", CommandParams{}, false},
-		{"previous", CommandParams{DeviceID: "d"}, false},
 		{"shuffle", CommandParams{}, false},
-		{"shuffle", CommandParams{DeviceID: "d"}, false},
 		{"transfer", CommandParams{}, false},
-		{"transfer", CommandParams{DeviceID: "d"}, false},
 		// volume requires level.
 		{"volume", CommandParams{Level: &level}, false},
-		{"volume", CommandParams{DeviceID: "d", Level: &level}, false},
 		{"volume", CommandParams{}, true},
 		// repeat requires repeat_state and it must be a valid value.
 		{"repeat", CommandParams{RepeatState: "off"}, false},

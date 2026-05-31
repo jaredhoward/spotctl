@@ -10,37 +10,37 @@ import (
 )
 
 // DispatchAction is the single execution point for every Spotify command,
-// whether invoked from a CLI verb or a set. The device_id in p is already
-// resolved (command-level wins over set-level; empty means active device).
-func DispatchAction(p config.CommandParams, action string, client *spotify.Client, cfg *config.Config, depth int) error {
+// whether invoked from a CLI verb or a set. deviceID is already resolved
+// (command-level wins over set-level; empty means active device).
+func DispatchAction(p config.CommandParams, action string, deviceID string, client *spotify.Client, cfg *config.Config, depth int) error {
 	switch action {
 	case "play":
 		contextURI, err := ResolveURIFromParams(p)
 		if err != nil {
 			return err
 		}
-		return client.Play(p.DeviceID, contextURI)
+		return client.Play(deviceID, contextURI)
 
 	case "pause":
-		return client.Pause(p.DeviceID)
+		return client.Pause(deviceID)
 
 	case "next":
-		return client.Next(p.DeviceID)
+		return client.Next(deviceID)
 
 	case "previous":
-		return client.Previous(p.DeviceID)
+		return client.Previous(deviceID)
 
 	case "shuffle":
-		return client.Shuffle(p.DeviceID, p.ShuffleEnabled())
+		return client.Shuffle(deviceID, p.ShuffleEnabled())
 
 	case "repeat":
-		return client.Repeat(p.DeviceID, p.RepeatState)
+		return client.Repeat(deviceID, p.RepeatState)
 
 	case "volume":
-		return client.Volume(p.DeviceID, *p.Level)
+		return client.Volume(deviceID, *p.Level)
 
 	case "transfer":
-		return client.TransferPlayback([]string{p.DeviceID}, p.TransferPlay())
+		return client.TransferPlayback([]string{deviceID}, p.TransferPlay())
 
 	case "sleep":
 		d, _ := time.ParseDuration(p.Duration) // already validated

@@ -35,7 +35,7 @@ func RunSet(name string, set config.Set, cfg *config.Config, client *spotify.Cli
 
 		// Resolve effective device: command-level wins, falls back to set-level.
 		resolved := cmd
-		resolved.Params.DeviceID = cmd.ResolvedDeviceID(set.DeviceID)
+		resolved.DeviceID = cmd.ResolvedDeviceID(set.DeviceID)
 
 		err := ExecuteCommand(resolved, cfg, client, set, depth)
 		if err == nil {
@@ -71,7 +71,8 @@ func RunSet(name string, set config.Set, cfg *config.Config, client *spotify.Cli
 		if handled == nil {
 			continue
 		}
-		if _, ok := errors.AsType[*skipRemainingError](handled); ok {
+		var skipErr *skipRemainingError
+		if errors.As(handled, &skipErr) {
 			return nil
 		}
 		return handled
@@ -125,7 +126,7 @@ func ExecuteCommand(cmd config.Command, cfg *config.Config, client *spotify.Clie
 		}
 	}
 
-	if err := DispatchAction(cmd.Params, cmd.Action, client, cfg, depth); err != nil {
+	if err := DispatchAction(cmd.Params, cmd.Action, cmd.DeviceID, client, cfg, depth); err != nil {
 		return err
 	}
 
@@ -177,7 +178,7 @@ func Confirmed(cmd config.Command, state *spotify.PlaybackState, priorTrackURI s
 		}
 		return diff <= 1
 	case "transfer":
-		return state.Device.ID == cmd.Params.DeviceID
+		return state.Device.ID == cmd.DeviceID
 	case "next", "previous":
 		// Confirmed when item.uri has changed from the pre-dispatch snapshot.
 		if state.Item == nil {

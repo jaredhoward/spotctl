@@ -28,11 +28,10 @@ func runTransfer(cmd *cobra.Command, args []string) error {
 	}
 
 	p := config.CommandParams{
-		DeviceID: transferDeviceID,
-		Play:     &transferPlay,
+		Play: &transferPlay,
 	}
 
-	if err := runner.DispatchAction(p, "transfer", client, nil, 0); err != nil {
+	if err := runner.DispatchAction(p, "transfer", transferDeviceID, client, nil, 0); err != nil {
 		return fmt.Errorf("transfer failed: %w", err)
 	}
 	return nil

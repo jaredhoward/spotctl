@@ -15,11 +15,6 @@ import (
 	"github.com/jaredhoward/spotctl/spotify"
 )
 
-// ----- small helpers ---------------------------------------------------------
-
-func intPtr(i int) *int    { return &i }
-func boolPtr(b bool) *bool { return &b }
-
 // mockServer creates an httptest.Server whose mux maps "METHOD /path" strings
 // to handler functions. Unmatched requests are logged and return 404.
 func mockServer(t *testing.T, handlers map[string]http.HandlerFunc) *httptest.Server {
@@ -80,7 +75,7 @@ func readBody(r *http.Request) (string, error) {
 func TestDispatchAction_Sleep(t *testing.T) {
 	p := config.CommandParams{Duration: "20ms"}
 	start := time.Now()
-	if err := runner.DispatchAction(p, "sleep", nil, newCfg(nil), 0); err != nil {
+	if err := runner.DispatchAction(p, "sleep", "", nil, newCfg(nil), 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if time.Since(start) < 20*time.Millisecond {
@@ -100,13 +95,13 @@ func TestDispatchAction_RunSet_Success(t *testing.T) {
 
 	inner := config.Set{
 		Commands: []config.Command{
-			{Action: "pause", Params: config.CommandParams{DeviceID: "d1"}},
+			{Action: "pause", DeviceID: "d1", Params: config.CommandParams{}},
 		},
 	}
 	cfg := newCfg(map[string]config.Set{"inner": inner})
 	p := config.CommandParams{Set: "inner"}
 
-	if err := runner.DispatchAction(p, "run_set", newClient(t, srv), cfg, 0); err != nil {
+	if err := runner.DispatchAction(p, "run_set", "", newClient(t, srv), cfg, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if pauseCount != 1 {
@@ -116,14 +111,14 @@ func TestDispatchAction_RunSet_Success(t *testing.T) {
 
 func TestDispatchAction_RunSet_NotFound(t *testing.T) {
 	p := config.CommandParams{Set: "does-not-exist"}
-	err := runner.DispatchAction(p, "run_set", nil, newCfg(nil), 0)
+	err := runner.DispatchAction(p, "run_set", "", nil, newCfg(nil), 0)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("expected not-found error, got %v", err)
 	}
 }
 
 func TestDispatchAction_UnknownAction(t *testing.T) {
-	err := runner.DispatchAction(config.CommandParams{}, "bogus", nil, newCfg(nil), 0)
+	err := runner.DispatchAction(config.CommandParams{}, "bogus", "", nil, newCfg(nil), 0)
 	if err == nil || !strings.Contains(err.Error(), "unknown action") {
 		t.Fatalf("expected unknown action error, got %v", err)
 	}
@@ -143,8 +138,8 @@ func TestDispatchAction_Play_WithPlaylist(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	p := config.CommandParams{DeviceID: "d1", PlaylistID: "pl123"}
-	if err := runner.DispatchAction(p, "play", newClient(t, srv), nil, 0); err != nil {
+	p := config.CommandParams{PlaylistID: "pl123"}
+	if err := runner.DispatchAction(p, "play", "d1", newClient(t, srv), nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(gotBody, "spotify:playlist:pl123") {
@@ -164,8 +159,8 @@ func TestDispatchAction_Play_WithTrack(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	p := config.CommandParams{DeviceID: "d1", TrackID: "tr456"}
-	if err := runner.DispatchAction(p, "play", newClient(t, srv), nil, 0); err != nil {
+	p := config.CommandParams{TrackID: "tr456"}
+	if err := runner.DispatchAction(p, "play", "d1", newClient(t, srv), nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(gotBody, "spotify:track:tr456") {
@@ -185,8 +180,8 @@ func TestDispatchAction_Play_WithAlbum(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	p := config.CommandParams{DeviceID: "d1", AlbumID: "al789"}
-	if err := runner.DispatchAction(p, "play", newClient(t, srv), nil, 0); err != nil {
+	p := config.CommandParams{AlbumID: "al789"}
+	if err := runner.DispatchAction(p, "play", "d1", newClient(t, srv), nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(gotBody, "spotify:album:al789") {
@@ -206,8 +201,8 @@ func TestDispatchAction_Play_WithArtist(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	p := config.CommandParams{DeviceID: "d1", ArtistID: "ar999"}
-	if err := runner.DispatchAction(p, "play", newClient(t, srv), nil, 0); err != nil {
+	p := config.CommandParams{ArtistID: "ar999"}
+	if err := runner.DispatchAction(p, "play", "d1", newClient(t, srv), nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(gotBody, "spotify:artist:ar999") {
@@ -217,7 +212,7 @@ func TestDispatchAction_Play_WithArtist(t *testing.T) {
 
 func TestDispatchAction_Play_MultipleURIParamsError(t *testing.T) {
 	p := config.CommandParams{PlaylistID: "pl1", TrackID: "tr1"}
-	err := runner.DispatchAction(p, "play", nil, nil, 0)
+	err := runner.DispatchAction(p, "play", "", nil, nil, 0)
 	if err == nil || !strings.Contains(err.Error(), "only one of") {
 		t.Fatalf("expected multiple URI error, got %v", err)
 	}
@@ -233,8 +228,8 @@ func TestDispatchAction_Transfer_WithPlay(t *testing.T) {
 	useTestServer(t, srv)
 
 	play := true
-	p := config.CommandParams{DeviceID: "d1", Play: &play}
-	if err := runner.DispatchAction(p, "transfer", newClient(t, srv), nil, 0); err != nil {
+	p := config.CommandParams{Play: &play}
+	if err := runner.DispatchAction(p, "transfer", "d1", newClient(t, srv), nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -253,8 +248,8 @@ func TestDispatchAction_Shuffle_Disabled(t *testing.T) {
 	useTestServer(t, srv)
 
 	enabled := false
-	p := config.CommandParams{DeviceID: "d1", Enabled: &enabled}
-	if err := runner.DispatchAction(p, "shuffle", newClient(t, srv), nil, 0); err != nil {
+	p := config.CommandParams{Enabled: &enabled}
+	if err := runner.DispatchAction(p, "shuffle", "d1", newClient(t, srv), nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if gotState != "false" {
@@ -276,8 +271,8 @@ func TestDispatchAction_Repeat(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	p := config.CommandParams{DeviceID: "d1", RepeatState: "track"}
-	if err := runner.DispatchAction(p, "repeat", newClient(t, srv), nil, 0); err != nil {
+	p := config.CommandParams{RepeatState: "track"}
+	if err := runner.DispatchAction(p, "repeat", "d1", newClient(t, srv), nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if gotState != "track" {
@@ -352,7 +347,7 @@ func TestRunSet_CommandDeviceOverridesSet(t *testing.T) {
 	set := config.Set{
 		DeviceID: "set-device",
 		Commands: []config.Command{
-			{Action: "pause", Params: config.CommandParams{DeviceID: "cmd-device"}},
+			{Action: "pause", DeviceID: "cmd-device"},
 		},
 	}
 	if err := runner.RunSet("test", set, newCfg(nil), newClient(t, srv), 0); err != nil {
@@ -397,7 +392,7 @@ func TestRunSet_PlayNoConfirm(t *testing.T) {
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{
-		{Action: "play", Params: config.CommandParams{DeviceID: "d1"}},
+		{Action: "play", DeviceID: "d1"},
 	}}
 	if err := runner.RunSet("test", set, newCfg(nil), newClient(t, srv), 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -420,7 +415,7 @@ func TestRunSet_PlayAndConfirm(t *testing.T) {
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{
-		{Action: "play", Params: config.CommandParams{DeviceID: "d1"}, Confirm: true, Timeout: "5s"},
+		{Action: "play", DeviceID: "d1", Confirm: true, Timeout: "5s"},
 	}}
 	if err := runner.RunSet("test", set, newCfg(nil), newClient(t, srv), 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -433,8 +428,10 @@ func TestRunSet_PlayAndConfirm(t *testing.T) {
 func TestRunSet_ConfirmTimeout_Continue(t *testing.T) {
 	pauseCalled := false
 	srv := mockServer(t, map[string]http.HandlerFunc{
-		"PUT /play":  func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
-		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.Write(stateBody(spotify.PlaybackState{IsPlaying: false})) },
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			w.Write(stateBody(spotify.PlaybackState{IsPlaying: false}))
+		},
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { pauseCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
 	defer srv.Close()
@@ -443,8 +440,8 @@ func TestRunSet_ConfirmTimeout_Continue(t *testing.T) {
 	set := config.Set{
 		OnTimeout: config.OnFailureContinue,
 		Commands: []config.Command{
-			{Action: "play", Params: config.CommandParams{DeviceID: "d1"}, Confirm: true, Timeout: "50ms"},
-			{Action: "pause", Params: config.CommandParams{DeviceID: "d1"}},
+			{Action: "play", DeviceID: "d1", Confirm: true, Timeout: "50ms"},
+			{Action: "pause", DeviceID: "d1"},
 		},
 	}
 	if err := runner.RunSet("test", set, newCfg(nil), newClient(t, srv), 0); err != nil {
@@ -458,13 +455,15 @@ func TestRunSet_ConfirmTimeout_Continue(t *testing.T) {
 func TestRunSet_ConfirmTimeout_Fail(t *testing.T) {
 	srv := mockServer(t, map[string]http.HandlerFunc{
 		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
-		"GET /":     func(w http.ResponseWriter, r *http.Request) { w.Write(stateBody(spotify.PlaybackState{IsPlaying: false})) },
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			w.Write(stateBody(spotify.PlaybackState{IsPlaying: false}))
+		},
 	})
 	defer srv.Close()
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{
-		{Action: "play", Params: config.CommandParams{DeviceID: "d1"}, Confirm: true, Timeout: "50ms", OnTimeout: config.OnFailureFail},
+		{Action: "play", DeviceID: "d1", Confirm: true, Timeout: "50ms", OnTimeout: config.OnFailureFail},
 	}}
 	err := runner.RunSet("test", set, newCfg(nil), newClient(t, srv), 0)
 	if err == nil || !strings.Contains(err.Error(), "timed out") {
@@ -475,16 +474,18 @@ func TestRunSet_ConfirmTimeout_Fail(t *testing.T) {
 func TestRunSet_ConfirmTimeout_SkipRemaining(t *testing.T) {
 	pauseCalled := false
 	srv := mockServer(t, map[string]http.HandlerFunc{
-		"PUT /play":  func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
-		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.Write(stateBody(spotify.PlaybackState{IsPlaying: false})) },
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			w.Write(stateBody(spotify.PlaybackState{IsPlaying: false}))
+		},
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { pauseCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
 	defer srv.Close()
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{
-		{Action: "play", Params: config.CommandParams{DeviceID: "d1"}, Confirm: true, Timeout: "50ms", OnTimeout: config.OnFailureSkipRemaining},
-		{Action: "pause", Params: config.CommandParams{DeviceID: "d1"}},
+		{Action: "play", DeviceID: "d1", Confirm: true, Timeout: "50ms", OnTimeout: config.OnFailureSkipRemaining},
+		{Action: "pause", DeviceID: "d1"},
 	}}
 	if err := runner.RunSet("test", set, newCfg(nil), newClient(t, srv), 0); err != nil {
 		t.Fatalf("expected nil, got %v", err)
@@ -508,8 +509,8 @@ func TestRunSet_CommandError_Continue(t *testing.T) {
 	set := config.Set{
 		OnError: config.OnFailureContinue,
 		Commands: []config.Command{
-			{Action: "next", Params: config.CommandParams{DeviceID: "d1"}},
-			{Action: "pause", Params: config.CommandParams{DeviceID: "d1"}},
+			{Action: "next", DeviceID: "d1"},
+			{Action: "pause", DeviceID: "d1"},
 		},
 	}
 	if err := runner.RunSet("test", set, newCfg(nil), newClient(t, srv), 0); err != nil {
@@ -530,7 +531,7 @@ func TestRunSet_CommandError_Fail(t *testing.T) {
 	set := config.Set{
 		OnError: config.OnFailureFail,
 		Commands: []config.Command{
-			{Action: "next", Params: config.CommandParams{DeviceID: "d1"}},
+			{Action: "next", DeviceID: "d1"},
 		},
 	}
 	err := runner.RunSet("test", set, newCfg(nil), newClient(t, srv), 0)
@@ -551,8 +552,8 @@ func TestRunSet_CommandError_SkipRemaining(t *testing.T) {
 	set := config.Set{
 		OnError: config.OnFailureSkipRemaining,
 		Commands: []config.Command{
-			{Action: "next", Params: config.CommandParams{DeviceID: "d1"}},
-			{Action: "pause", Params: config.CommandParams{DeviceID: "d1"}},
+			{Action: "next", DeviceID: "d1"},
+			{Action: "pause", DeviceID: "d1"},
 		},
 	}
 	if err := runner.RunSet("test", set, newCfg(nil), newClient(t, srv), 0); err != nil {
@@ -573,7 +574,7 @@ func TestRunSet_CommandOverridesSetDefault(t *testing.T) {
 	set := config.Set{
 		OnError: config.OnFailureContinue,
 		Commands: []config.Command{
-			{Action: "next", Params: config.CommandParams{DeviceID: "d1"}, OnError: config.OnFailureFail},
+			{Action: "next", DeviceID: "d1", OnError: config.OnFailureFail},
 		},
 	}
 	err := runner.RunSet("test", set, newCfg(nil), newClient(t, srv), 0)
@@ -606,7 +607,7 @@ func TestRunSet_Composable(t *testing.T) {
 	useTestServer(t, srv)
 
 	inner := config.Set{Commands: []config.Command{
-		{Action: "pause", Params: config.CommandParams{DeviceID: "d1"}},
+		{Action: "pause", DeviceID: "d1"},
 	}}
 	outer := config.Set{Commands: []config.Command{
 		{Action: "run_set", Params: config.CommandParams{Set: "inner"}},
@@ -714,7 +715,7 @@ func TestConfirmed_Volume_NilLevel(t *testing.T) {
 }
 
 func TestConfirmed_Transfer(t *testing.T) {
-	cmd := config.Command{Action: "transfer", Params: config.CommandParams{DeviceID: "target"}}
+	cmd := config.Command{Action: "transfer", DeviceID: "target"}
 	if !runner.Confirmed(cmd, &spotify.PlaybackState{Device: spotify.Device{ID: "target"}}, "") {
 		t.Error("expected confirmed when active device matches")
 	}
@@ -792,10 +793,10 @@ func TestExecuteCommand_Next_SnapshotsURI(t *testing.T) {
 	useTestServer(t, srv)
 
 	cmd := config.Command{
-		Action:  "next",
-		Params:  config.CommandParams{DeviceID: "d1"},
-		Confirm: true,
-		Timeout: "5s",
+		Action:   "next",
+		DeviceID: "d1",
+		Confirm:  true,
+		Timeout:  "5s",
 	}
 	if err := runner.ExecuteCommand(cmd, newCfg(nil), newClient(t, srv), config.Set{}, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -822,10 +823,10 @@ func TestExecuteCommand_ConfirmPollError(t *testing.T) {
 	useTestServer(t, srv)
 
 	cmd := config.Command{
-		Action:  "play",
-		Params:  config.CommandParams{DeviceID: "d1"},
-		Confirm: true,
-		Timeout: "5s",
+		Action:   "play",
+		DeviceID: "d1",
+		Confirm:  true,
+		Timeout:  "5s",
 	}
 	if err := runner.ExecuteCommand(cmd, newCfg(nil), newClient(t, srv), config.Set{}, 0); err != nil {
 		t.Fatalf("expected success after transient poll errors, got %v", err)

@@ -118,16 +118,15 @@ func TestLoadAndSaveRoundTrip(t *testing.T) {
 			"sleep": {
 				Commands: []Command{
 					{
-						Action: "play",
-						Params: CommandParams{
-							DeviceID: "dev1",
-							URI:      "spotify:playlist:abc",
-						},
-						Confirm: true,
+						Action:   "play",
+						DeviceID: "dev1",
+						Params:   CommandParams{URI: "spotify:playlist:abc"},
+						Confirm:  true,
 					},
 					{
-						Action: "volume",
-						Params: CommandParams{DeviceID: "dev1", Level: &level},
+						Action:   "volume",
+						DeviceID: "dev1",
+						Params:   CommandParams{Level: &level},
 					},
 				},
 			},
@@ -157,8 +156,8 @@ func TestLoadAndSaveRoundTrip(t *testing.T) {
 	if len(sleep.Commands) != 2 {
 		t.Errorf("expected 2 commands in sleep set, got %d", len(sleep.Commands))
 	}
-	if sleep.Commands[0].Params.DeviceID != "dev1" {
-		t.Errorf("device_id not preserved: %+v", sleep.Commands[0].Params)
+	if sleep.Commands[0].DeviceID != "dev1" {
+		t.Errorf("device_id not preserved: %+v", sleep.Commands[0])
 	}
 	if loaded.DeviceNames["dev1"] != "Bedroom Speaker" {
 		t.Errorf("device name not preserved: %+v", loaded.DeviceNames)

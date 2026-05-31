@@ -99,7 +99,7 @@ sets:
 
 | Field | Default | Description |
 |---|---|---|
-| `device_id` | — | Applies to every command in the set. A command can override it with its own `params.device_id`. Omitting at both levels targets the currently active Spotify device. |
+| `device_id` | — | Applies to every command in the set. A command can override it with its own `device_id`. Omitting at both levels targets the currently active Spotify device. |
 | `on_error` | `continue` | Default error policy for all commands in the set. |
 | `on_timeout` | `continue` | Default timeout policy for all commands in the set. |
 
@@ -110,6 +110,7 @@ Each command in a set has:
 | Field | Default | Description |
 |---|---|---|
 | `action` | *(required)* | See actions table below |
+| `device_id` | — | Spotify device ID for this command. Overrides the set-level `device_id`. Omit to target the active device. |
 | `params` | — | Action-specific parameters (see below) |
 | `confirm` | `false` | Poll Spotify state until the action is reflected before continuing |
 | `timeout` | `15s` | Overall deadline for the command including confirmation polling |
@@ -120,19 +121,20 @@ Each command in a set has:
 
 | Action | Required params | Optional params | Confirms by checking |
 |---|---|---|---|
-| `play` | — | `device_id`, `uri`, `playlist`, `track`, `album` | `is_playing = true` |
-| `pause` | — | `device_id` | `is_playing = false` |
-| `next` | — | `device_id` | track URI changed |
-| `previous` | — | `device_id` | track URI changed |
-| `shuffle` | — | `device_id`, `enabled` (default `true`) | `shuffle_state = enabled` |
-| `repeat` | `repeat_state` | `device_id` | `repeat_state` matches |
-| `volume` | `level` | `device_id` | `device.volume_percent = level` |
-| `transfer` | — | `device_id`, `play` (default `false`) | `device.id = device_id` |
+| `play` | — | `uri`, `playlist`, `track`, `album` | `is_playing = true` |
+| `pause` | — | — | `is_playing = false` |
+| `next` | — | — | track URI changed |
+| `previous` | — | — | track URI changed |
+| `shuffle` | — | `enabled` (default `true`) | `shuffle_state = enabled` |
+| `repeat` | `repeat_state` | — | `repeat_state` matches |
+| `volume` | `level` | — | `device.volume_percent = level` |
+| `transfer` | — | `play` (default `false`) | `device.id = device_id` |
 | `run_set` | `set` | — | inner set completes |
 | `sleep` | `duration` | — | — |
 
 Notes:
 
+- `device_id` is specified at the command level and applies to all actions that use a device. Omitting it completely from set and command levels target the currently active Spotify device.
 - For `play`, use one of `uri`, `playlist`, `track`, or `album` — not more than one. `playlist`, `track`, and `album` are shorthand for the corresponding `spotify:TYPE:ID` URI.
 - `repeat_state` must be one of `off`, `track`, or `context`.
 - `sleep` pauses execution for the specified duration (e.g. `30s`, `1m`). No Spotify API call is made. `confirm` has no effect.

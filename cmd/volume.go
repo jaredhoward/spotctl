@@ -31,11 +31,10 @@ func runVolume(cmd *cobra.Command, args []string) error {
 	}
 
 	p := config.CommandParams{
-		DeviceID: volumeDeviceID,
-		Level:    &volumeLevel,
+		Level: &volumeLevel,
 	}
 
-	if err := runner.DispatchAction(p, "volume", client, nil, 0); err != nil {
+	if err := runner.DispatchAction(p, "volume", volumeDeviceID, client, nil, 0); err != nil {
 		return fmt.Errorf("volume failed: %w", err)
 	}
 	return nil

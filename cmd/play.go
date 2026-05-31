@@ -35,11 +35,10 @@ func runPlay(cmd *cobra.Command, args []string) error {
 	}
 
 	p := config.CommandParams{
-		DeviceID: playDeviceID,
-		URI:      contextURI,
+		URI: contextURI,
 	}
 
-	if err := runner.DispatchAction(p, "play", client, nil, 0); err != nil {
+	if err := runner.DispatchAction(p, "play", playDeviceID, client, nil, 0); err != nil {
 		return fmt.Errorf("play failed: %w", err)
 	}
 	return nil

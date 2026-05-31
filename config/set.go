@@ -34,6 +34,7 @@ type Set struct {
 type Command struct {
 	Name      string        `yaml:"name,omitempty"`
 	Action    string        `yaml:"action"`
+	DeviceID  string        `yaml:"device_id,omitempty"`
 	Params    CommandParams `yaml:"params,omitempty"`
 	Confirm   bool          `yaml:"confirm,omitempty"`
 	Timeout   string        `yaml:"timeout,omitempty"`
@@ -44,8 +45,8 @@ type Command struct {
 // ResolvedDeviceID returns the command's own device_id when set, otherwise
 // falls back to the set-level device_id.
 func (c *Command) ResolvedDeviceID(setDeviceID string) string {
-	if c.Params.DeviceID != "" {
-		return c.Params.DeviceID
+	if c.DeviceID != "" {
+		return c.DeviceID
 	}
 	return setDeviceID
 }
@@ -87,7 +88,6 @@ func (c *Command) EffectiveOnTimeout(setDefault OnFailure) OnFailure {
 
 // CommandParams holds all possible parameters for any action type.
 type CommandParams struct {
-	DeviceID    string `yaml:"device_id,omitempty"`
 	URI         string `yaml:"uri,omitempty"`
 	PlaylistID  string `yaml:"playlist,omitempty"`
 	TrackID     string `yaml:"track,omitempty"`
@@ -118,8 +118,8 @@ func (p *CommandParams) TransferPlay() bool {
 }
 
 // Validate checks that required params are present for the given action.
-// device_id is not validated here — it may be supplied at the set level or
-// left empty to target the active Spotify device.
+// device_id is not validated here — it lives on the Command and is resolved
+// at the set level before dispatch.
 func (p *CommandParams) Validate(action string) error {
 	switch action {
 	case "play", "pause", "next", "previous", "shuffle", "transfer":
