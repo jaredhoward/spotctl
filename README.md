@@ -121,7 +121,7 @@ Each command in a set has:
 
 | Action | Required params | Optional params | Confirms by checking |
 |---|---|---|---|
-| `play` | — | `uri`, `playlist`, `track`, `album` | `is_playing = true` |
+| `play` | — | `uri`, `playlist`, `track`, `album`, `artist` | `is_playing = true` |
 | `pause` | — | — | `is_playing = false` |
 | `next` | — | — | track URI changed |
 | `previous` | — | — | track URI changed |
@@ -135,7 +135,7 @@ Each command in a set has:
 Notes:
 
 - `device_id` is specified at the command level and applies to all actions that use a device. Omitting it completely from set and command levels target the currently active Spotify device.
-- For `play`, use one of `uri`, `playlist`, `track`, or `album` — not more than one. `playlist`, `track`, and `album` are shorthand for the corresponding `spotify:TYPE:ID` URI.
+- For `play`, use one of `uri`, `playlist`, `track`, `album`, or `artist` — not more than one. `playlist`, `track`, `album` and `artist` are shorthand for the corresponding `spotify:TYPE:ID` URI.
 - `repeat_state` must be one of `off`, `track`, or `context`.
 - `sleep` pauses execution for the specified duration (e.g. `30s`, `1m`). No Spotify API call is made. `confirm` has no effect.
 
@@ -292,11 +292,15 @@ Existing sets and device names will be preserved and credentials pre-filled for 
 
 ## Home Assistant Integration
 
-### `shell_commands.yaml`
+### Shell Commands
+
+Home Assistant's `shell_commands.yaml` integration lets you call external programs from automations. Here's how to define a shell command that runs a `spotctl` set:
 
 ```yaml
 spotctl_random_sleep: /config/scripts/spotctl run random_sleep --config /config/scripts/config.yaml
 ```
+
+This creates a callable action named `shell_command.spotctl_random_sleep` that Home Assistant can execute as part of automations and scripts.
 
 ### HA Script
 
