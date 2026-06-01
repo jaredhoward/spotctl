@@ -1,4 +1,4 @@
-package runner
+package sets
 
 import (
 	"fmt"
@@ -7,12 +7,26 @@ import (
 	"github.com/jaredhoward/spotctl/config"
 )
 
-// CommandLabel returns a human-readable description of a command for display.
+// CommandLabel returns a human-readable description of a command for logging
+// and the sets listing.
 func CommandLabel(n int, c config.Command) string {
 	var parts []string
 	parts = append(parts, c.Action)
 
 	switch c.Action {
+	case "play":
+		switch {
+		case c.Params.URI != "":
+			parts = append(parts, fmt.Sprintf("uri=%s", c.Params.URI))
+		case c.Params.PlaylistID != "":
+			parts = append(parts, fmt.Sprintf("playlist=%s", c.Params.PlaylistID))
+		case c.Params.TrackID != "":
+			parts = append(parts, fmt.Sprintf("track=%s", c.Params.TrackID))
+		case c.Params.AlbumID != "":
+			parts = append(parts, fmt.Sprintf("album=%s", c.Params.AlbumID))
+		case c.Params.ArtistID != "":
+			parts = append(parts, fmt.Sprintf("artist=%s", c.Params.ArtistID))
+		}
 	case "volume":
 		if c.Params.Level != nil {
 			parts = append(parts, fmt.Sprintf("level=%d", *c.Params.Level))
@@ -31,26 +45,9 @@ func CommandLabel(n int, c config.Command) string {
 		if c.Params.Set != "" {
 			parts = append(parts, fmt.Sprintf("set=%s", c.Params.Set))
 		}
-	case "play":
-		switch {
-		case c.Params.URI != "":
-			parts = append(parts, fmt.Sprintf("uri=%s", c.Params.URI))
-		case c.Params.PlaylistID != "":
-			parts = append(parts, fmt.Sprintf("playlist=%s", c.Params.PlaylistID))
-		case c.Params.TrackID != "":
-			parts = append(parts, fmt.Sprintf("track=%s", c.Params.TrackID))
-		case c.Params.AlbumID != "":
-			parts = append(parts, fmt.Sprintf("album=%s", c.Params.AlbumID))
-		case c.Params.ArtistID != "":
-			parts = append(parts, fmt.Sprintf("artist=%s", c.Params.ArtistID))
-		}
-	case "transfer":
-		if c.DeviceID != "" {
-			parts = append(parts, fmt.Sprintf("device=%s", c.DeviceID))
-		}
 	}
 
-	if c.DeviceID != "" && c.Action != "transfer" {
+	if c.DeviceID != "" {
 		parts = append(parts, fmt.Sprintf("device=%s", c.DeviceID))
 	}
 	if c.Confirm {

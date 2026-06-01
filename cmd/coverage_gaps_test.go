@@ -351,6 +351,69 @@ func TestDevicesActiveDevice(t *testing.T) {
 	}
 }
 
+func TestDevicesUsesConfiguredNameWhenLiveNameMissing(t *testing.T) {
+	oldConfigPath := configPath
+	defer func() { configPath = oldConfigPath }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"devices":[{"id":"d1","name":"","type":"","volume_percent":30}]}`))
+	}))
+	defer srv.Close()
+
+	configPath = writeTempConfig(t, &config.Config{
+		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
+		DeviceNames: map[string]string{"d1": "Living Room"},
+	})
+	cleanup := wireClient(t, srv)
+	defer cleanup()
+
+	output := captureOutput(t, func() {
+		if err := devicesCmd.RunE(devicesCmd, nil); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if !strings.Contains(output, "Living Room") {
+		t.Errorf("expected configured device name in output, got: %q", output)
+	}
+	if !strings.Contains(output, "unknown") {
+		t.Errorf("expected unknown type label in output, got: %q", output)
+	}
+}
+
+func TestDevicesHandlesNilDeviceNames(t *testing.T) {
+	oldConfigPath := configPath
+	defer func() { configPath = oldConfigPath }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"devices":[{"id":"d1","name":"Device One","type":"Speaker","volume_percent":5}]}`))
+	}))
+	defer srv.Close()
+
+	configPath = writeTempConfig(t, &config.Config{
+		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
+		DeviceNames: nil,
+	})
+	cleanup := wireClient(t, srv)
+	defer cleanup()
+
+	if _, err := config.Load(configPath); err != nil {
+		t.Fatalf("could not load config: %v", err)
+	}
+
+	output := captureOutput(t, func() {
+		if err := devicesCmd.RunE(devicesCmd, nil); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if !strings.Contains(output, "Device One") {
+		t.Errorf("expected live device name in output, got: %q", output)
+	}
+}
+
 // ----- control commands: API error paths -------------------------------------
 
 func TestPauseCmdRunE_APIError(t *testing.T) {

@@ -13,9 +13,6 @@ import (
 
 // ----- small helpers used across cmd tests -----------------------------------
 
-func intPtr(i int) *int    { return &i }
-func boolPtr(b bool) *bool { return &b }
-
 // writeTempConfig saves cfg to a temp file and returns its path.
 func writeTempConfig(t *testing.T, cfg *config.Config) string {
 	t.Helper()

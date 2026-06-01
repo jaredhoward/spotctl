@@ -39,6 +39,13 @@ spotctl setup --config ./config.yaml
 
 This will prompt for your Spotify Client ID, Client Secret, and Redirect URI (which must match one configured in your Spotify app), then walk through the OAuth flow and generate a `config.yaml` file.
 
+```yaml
+client_id: YOUR_CLIENT_ID
+client_secret: YOUR_CLIENT_SECRET
+refresh_token: YOUR_REFRESH_TOKEN
+redirect_uri: https://your-redirect-uri
+```
+
 ### 2. Discover and persist device IDs
 
 Before configuring sets, find the device IDs of your Spotify Connect devices:
@@ -68,11 +75,6 @@ device_names:
 Sets are named sequences of Spotify commands. A set can be as simple as a single play command or as complex as a multi-step routine with confirmation and error handling. Run a set with `spotctl run <name>`, or list all configured sets with `spotctl sets`.
 
 ```yaml
-client_id: YOUR_CLIENT_ID
-client_secret: YOUR_CLIENT_SECRET
-refresh_token: YOUR_REFRESH_TOKEN
-redirect_uri: https://your-redirect-uri
-
 sets:
   random_sleep:
     device_id: DEVICE_ID

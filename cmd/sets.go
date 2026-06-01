@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
 	"github.com/jaredhoward/spotctl/config"
-	"github.com/jaredhoward/spotctl/runner"
+	"github.com/jaredhoward/spotctl/sets"
 	"github.com/spf13/cobra"
 )
+
+// ---- sets -------------------------------------------------------------------
 
 var setsCmd = &cobra.Command{
 	Use:   "sets",
@@ -43,7 +46,7 @@ func runSets(cmd *cobra.Command, args []string) error {
 		fmt.Printf("%s  —  %d command(s)  device: %s\n", name, len(set.Commands), device)
 
 		for i, c := range set.Commands {
-			fmt.Printf("    %2d. %s\n", i+1, runner.CommandLabel(i+1, c))
+			fmt.Printf("    %2d. %s\n", i+1, sets.CommandLabel(i+1, c))
 		}
 		fmt.Println()
 	}
@@ -51,6 +54,41 @@ func runSets(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// ---- run --------------------------------------------------------------------
+
+var runCmd = &cobra.Command{
+	Use:   "run <set>",
+	Short: "Run a named set of Spotify commands",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+
+		set, ok := cfg.Sets[name]
+		if !ok {
+			return fmt.Errorf("set %q not found in config", name)
+		}
+
+		rs, err := sets.Build(name, set, cfg, 0)
+		if err != nil {
+			return err
+		}
+
+		client, err := newClientFromConfig()
+		if err != nil {
+			return err
+		}
+
+		return rs.Dispatch(context.Background(), client)
+	},
+}
+
+// ---- init -------------------------------------------------------------------
+
 func init() {
-	rootCmd.AddCommand(setsCmd)
+	rootCmd.AddCommand(setsCmd, runCmd)
 }
