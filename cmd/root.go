@@ -17,8 +17,9 @@ func SetVersion(v string) {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "spotctl",
-	Short: "Spotify Connect controller",
+	Use:          "spotctl",
+	Short:        "Spotify Connect controller",
+	SilenceUsage: true,
 }
 
 var versionCmd = &cobra.Command{
