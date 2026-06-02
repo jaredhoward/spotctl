@@ -50,7 +50,13 @@ func (p *Play) Dispatch(_ context.Context, c *Client) error {
 }
 
 func (p *Play) Confirmed(state *PlaybackState) bool {
-	return state != nil && state.IsPlaying
+	if state == nil || !state.IsPlaying {
+		return false
+	}
+	if p.ContextURI == "" {
+		return true
+	}
+	return state.Context != nil && state.Context.URI == p.ContextURI
 }
 
 func (p *Play) Label() string {

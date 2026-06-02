@@ -307,11 +307,18 @@ func TestSpotifyActionLabelsAndConfirmed(t *testing.T) {
 		wantConfirmed bool
 	}{
 		{
-			name:          "play with uri",
+			name:          "play with uri and matching context",
 			action:        &Play{DeviceID: "device", ContextURI: "spotify:track:abc"},
-			state:         &PlaybackState{IsPlaying: true},
+			state:         &PlaybackState{IsPlaying: true, Context: &PlaybackContext{URI: "spotify:track:abc"}},
 			wantLabel:     "play uri=spotify:track:abc device=device",
 			wantConfirmed: true,
+		},
+		{
+			name:          "play with uri and mismatched context",
+			action:        &Play{DeviceID: "device", ContextURI: "spotify:track:abc"},
+			state:         &PlaybackState{IsPlaying: true, Context: &PlaybackContext{URI: "spotify:playlist:xyz"}},
+			wantLabel:     "play uri=spotify:track:abc device=device",
+			wantConfirmed: false,
 		},
 		{
 			name:          "play without uri",
