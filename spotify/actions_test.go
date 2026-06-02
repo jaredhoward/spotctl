@@ -376,6 +376,13 @@ func TestSpotifyActionLabelsAndConfirmed(t *testing.T) {
 			wantLabel:     "transfer device=device play=false",
 			wantConfirmed: true,
 		},
+		{
+			name:          "transfer with play",
+			action:        &Transfer{DeviceID: "device", Play: true},
+			state:         &PlaybackState{Device: Device{ID: "device"}, IsPlaying: true},
+			wantLabel:     "transfer device=device play=true",
+			wantConfirmed: true,
+		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {

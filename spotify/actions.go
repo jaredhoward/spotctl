@@ -237,7 +237,13 @@ func (t *Transfer) Dispatch(_ context.Context, c *Client) error {
 }
 
 func (t *Transfer) Confirmed(state *PlaybackState) bool {
-	return state != nil && state.Device.ID == t.DeviceID
+	if state == nil || state.Device.ID != t.DeviceID {
+		return false
+	}
+	if t.Play && !state.IsPlaying {
+		return false
+	}
+	return true
 }
 
 func (t *Transfer) Label() string {
