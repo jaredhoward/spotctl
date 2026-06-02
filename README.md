@@ -123,7 +123,7 @@ Each command in a set has:
 
 | Action | Required params | Optional params | Confirms by checking |
 |---|---|---|---|
-| `play` | — | `uri`, `playlist`, `track`, `album`, `artist` | `is_playing = true` |
+| `play` | — | `uri`, `playlist`, `track`, `album`, `artist` | `is_playing = true`, track URI changed if provided |
 | `pause` | — | — | `is_playing = false` |
 | `next` | — | — | track URI changed |
 | `previous` | — | — | track URI changed |
