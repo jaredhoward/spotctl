@@ -98,7 +98,7 @@ type CommandParams struct {
 	Enabled     *bool  `yaml:"enabled,omitempty"`
 	Duration    string `yaml:"duration,omitempty"`
 	Set         string `yaml:"set,omitempty"`
-	RepeatState string `yaml:"repeat_state,omitempty"` // off | track | context
+	RepeatState string `yaml:"state,omitempty"` // off | track | context
 }
 
 // ShuffleEnabled returns the value of Enabled, defaulting to true.
@@ -130,10 +130,10 @@ func (p *CommandParams) Validate(action string) error {
 		}
 	case "repeat":
 		if p.RepeatState == "" {
-			return fmt.Errorf("action %q requires params.repeat_state (off, track, context)", action)
+			return fmt.Errorf("action %q requires params.state (off, track, context)", action)
 		}
 		if !ValidRepeatStates[p.RepeatState] {
-			return fmt.Errorf("action %q: invalid repeat_state %q — must be off, track, or context", action, p.RepeatState)
+			return fmt.Errorf("action %q: invalid state %q — must be off, track, or context", action, p.RepeatState)
 		}
 	case "sleep":
 		if p.Duration == "" {

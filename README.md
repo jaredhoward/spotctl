@@ -92,7 +92,7 @@ sets:
         timeout: 5s
       - action: repeat
         params:
-          repeat_state: context
+          state: context
         confirm: true
         timeout: 5s
 ```
@@ -128,7 +128,7 @@ Each command in a set has:
 | `next` | — | — | track URI changed |
 | `previous` | — | — | track URI changed |
 | `shuffle` | — | `enabled` (default `true`) | `shuffle_state = enabled` |
-| `repeat` | `repeat_state` | — | `repeat_state` matches |
+| `repeat` | `state` | — | `repeat_state = state` |
 | `volume` | `level` | — | `device.volume_percent = level` |
 | `transfer` | — | `play` (default `false`) | `device.id = device_id` |
 | `run_set` | `set` | — | inner set completes |
@@ -138,7 +138,7 @@ Notes:
 
 - `device_id` is specified at the command level and applies to all actions that use a device. Omitting it completely from set and command levels target the currently active Spotify device.
 - For `play`, use one of `uri`, `playlist`, `track`, `album`, or `artist` — not more than one. `playlist`, `track`, `album` and `artist` are shorthand for the corresponding `spotify:TYPE:ID` URI.
-- `repeat_state` must be one of `off`, `track`, or `context`.
+- `state` must be one of `off`, `track`, or `context`.
 - `sleep` pauses execution for the specified duration (e.g. `30s`, `1m`). No Spotify API call is made. `confirm` has no effect.
 
 ### 4. Test

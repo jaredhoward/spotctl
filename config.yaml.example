@@ -42,7 +42,7 @@ sets:
 
       - action: repeat
         params:
-          repeat_state: context   # off | track | context
+          state: context   # off | track | context
         confirm: true
         timeout: 5s
 
@@ -68,7 +68,7 @@ sets:
       - name: repeat off
         action: repeat
         params:
-          repeat_state: off
+          state: off
         confirm: true
         timeout: 5s
 

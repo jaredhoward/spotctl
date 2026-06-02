@@ -47,7 +47,7 @@ sets:
       - name: set repeat
         action: repeat
         params:
-          repeat_state: context
+          state: context
   warmup:
     commands:
       - action: next
@@ -133,7 +133,7 @@ func TestSetRoundTrip(t *testing.T) {
 		t.Errorf("command 5 action: got %q, want repeat", c5.Action)
 	}
 	if c5.Params.RepeatState != "context" {
-		t.Errorf("command 5 repeat_state: got %q, want context", c5.Params.RepeatState)
+		t.Errorf("command 5 state: got %q, want context", c5.Params.RepeatState)
 	}
 
 	warmup, ok := cfg.Sets["warmup"]
@@ -272,7 +272,7 @@ func TestValidateAllActions(t *testing.T) {
 		// volume requires level.
 		{"volume", CommandParams{Level: &level}, false},
 		{"volume", CommandParams{}, true},
-		// repeat requires repeat_state and it must be a valid value.
+		// repeat requires state and it must be a valid value.
 		{"repeat", CommandParams{RepeatState: "off"}, false},
 		{"repeat", CommandParams{RepeatState: "track"}, false},
 		{"repeat", CommandParams{RepeatState: "context"}, false},
@@ -413,7 +413,7 @@ func TestValidateRepeatInvalidStateMessage(t *testing.T) {
 	p := CommandParams{RepeatState: "badvalue"}
 	err := p.Validate("repeat")
 	if err == nil {
-		t.Fatal("expected error for invalid repeat_state")
+		t.Fatal("expected error for invalid state")
 	}
 	if !strings.Contains(err.Error(), "badvalue") {
 		t.Errorf("expected invalid value in error, got: %v", err)
@@ -424,10 +424,10 @@ func TestValidateRepeatMissingState(t *testing.T) {
 	p := CommandParams{}
 	err := p.Validate("repeat")
 	if err == nil {
-		t.Fatal("expected error for missing repeat_state")
+		t.Fatal("expected error for missing state")
 	}
-	if !strings.Contains(err.Error(), "repeat_state") {
-		t.Errorf("expected 'repeat_state' in error, got: %v", err)
+	if !strings.Contains(err.Error(), "state") {
+		t.Errorf("expected 'state' in error, got: %v", err)
 	}
 }
 
