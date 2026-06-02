@@ -1,11 +1,13 @@
 BINARY=spotctl
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
-# Space-separated for 'go test', comma-separated for -coverpkg.
-# The root main package is excluded from both: it has no test files and
-# causes a "bad file descriptor" coverage error when included in -coverpkg=./...
-TESTPKGS  = ./cmd/... ./config/... ./sets/... ./spotify/...
-COVERPKGS = ./cmd/...,./config/...,./sets/...,./spotify/...
+# Default package to test. Override with PKG=spotify or PKG=./spotify.
+PKG ?= ./...
+
+# Module-wide coverage by default, or package-local coverage for a specific package.
+TESTPKG := $(if $(filter ./...,$(PKG)),$(PKG),$(if $(findstring ./,$(PKG)),$(PKG),./$(PKG)))
+COVERPKG := $(TESTPKG)
+COVERPROFILE := $(if $(filter ./...,$(TESTPKG)),coverage.out,$(notdir $(TESTPKG)).out)
 
 check-tag:
 	@git describe --tags --exact-match 2>/dev/null || \
@@ -18,10 +20,10 @@ build-ha-green: check-tag
 	GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o $(BINARY)-linux-arm64 .
 
 test:
-	go test $(TESTPKGS) -coverpkg=$(COVERPKGS) -coverprofile=coverage.out
+	go test $(TESTPKG) -coverpkg=$(COVERPKG) -coverprofile=$(COVERPROFILE)
 
 coverage: test
-	go tool cover -html=coverage.out
+	go tool cover -html=$(COVERPROFILE)
 
 clean:
 	rm -f $(BINARY) $(BINARY)-*
