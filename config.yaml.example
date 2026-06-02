@@ -16,7 +16,7 @@ redirect_uri: https://your-redirect-uri
 #   confirm    - (default: false) poll Spotify state until the action is
 #                reflected before moving on
 #   timeout    - (default: 15s) overall command deadline including confirmation
-#   on_error   - (default: set-level or "continue") fail | continue | skip_remaining
+#   on_error   - (default: set-level or "fail") fail | continue | skip_remaining
 #   on_timeout - same options as on_error
 #
 # Set-level device_id applies to all commands that don't define their own.

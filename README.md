@@ -102,8 +102,8 @@ sets:
 | Field | Default | Description |
 |---|---|---|
 | `device_id` | — | Applies to every command in the set. A command can override it with its own `device_id`. Omitting at both levels targets the currently active Spotify device. |
-| `on_error` | `continue` | Default error policy for all commands in the set. |
-| `on_timeout` | `continue` | Default timeout policy for all commands in the set. |
+| `on_error` | `fail` | Default error policy for all commands in the set. |
+| `on_timeout` | `fail` | Default timeout policy for all commands in the set. |
 
 #### Commands
 
@@ -116,8 +116,8 @@ Each command in a set has:
 | `params` | — | Action-specific parameters (see below) |
 | `confirm` | `false` | Poll Spotify state until the action is reflected before continuing |
 | `timeout` | `15s` | Overall deadline for the command including confirmation polling |
-| `on_error` | set-level or `continue` | `fail` \| `continue` \| `skip_remaining` |
-| `on_timeout` | set-level or `continue` | `fail` \| `continue` \| `skip_remaining` |
+| `on_error` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
+| `on_timeout` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
 
 #### Params reference
 

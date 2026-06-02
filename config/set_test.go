@@ -192,7 +192,7 @@ func TestEffectiveOnError(t *testing.T) {
 		setDefault OnFailure
 		want       OnFailure
 	}{
-		{"", "", OnFailureContinue},
+		{"", "", OnFailureFail},
 		{"", OnFailureFail, OnFailureFail},
 		{OnFailureSkipRemaining, OnFailureFail, OnFailureSkipRemaining},
 		{OnFailureContinue, OnFailureFail, OnFailureContinue},
@@ -211,7 +211,7 @@ func TestEffectiveOnTimeout(t *testing.T) {
 		setDefault OnFailure
 		want       OnFailure
 	}{
-		{"", "", OnFailureContinue},
+		{"", "", OnFailureFail},
 		{"", OnFailureFail, OnFailureFail},
 		{OnFailureSkipRemaining, OnFailureFail, OnFailureSkipRemaining},
 	}

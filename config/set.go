@@ -64,7 +64,7 @@ func (c *Command) TimeoutDuration(def time.Duration) time.Duration {
 }
 
 // EffectiveOnError returns the command's on_error if set, else the set
-// default, else OnFailureContinue.
+// default, else OnFailureFail.
 func (c *Command) EffectiveOnError(setDefault OnFailure) OnFailure {
 	if c.OnError != "" {
 		return c.OnError
@@ -72,7 +72,7 @@ func (c *Command) EffectiveOnError(setDefault OnFailure) OnFailure {
 	if setDefault != "" {
 		return setDefault
 	}
-	return OnFailureContinue
+	return OnFailureFail
 }
 
 // EffectiveOnTimeout mirrors EffectiveOnError for timeout.
@@ -83,7 +83,7 @@ func (c *Command) EffectiveOnTimeout(setDefault OnFailure) OnFailure {
 	if setDefault != "" {
 		return setDefault
 	}
-	return OnFailureContinue
+	return OnFailureFail
 }
 
 // CommandParams holds all possible parameters for any action type.
