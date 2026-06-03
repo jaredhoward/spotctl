@@ -36,10 +36,22 @@ type Command struct {
 	Action    string        `yaml:"action"`
 	DeviceID  string        `yaml:"device_id,omitempty"`
 	Params    CommandParams `yaml:"params,omitempty"`
-	Confirm   bool          `yaml:"confirm,omitempty"`
+	// Confirm is a pointer so that an explicit confirm:false in YAML can be
+	// distinguished from the field being absent. When nil (not set), the
+	// default is true — confirmation is on unless explicitly opted out.
+	Confirm   *bool         `yaml:"confirm,omitempty"`
 	Timeout   string        `yaml:"timeout,omitempty"`
 	OnError   OnFailure     `yaml:"on_error,omitempty"`
 	OnTimeout OnFailure     `yaml:"on_timeout,omitempty"`
+}
+
+// ConfirmEnabled reports whether confirmation is enabled for this command.
+// Defaults to true when Confirm is not explicitly set in config.
+func (c *Command) ConfirmEnabled() bool {
+	if c.Confirm == nil {
+		return true
+	}
+	return *c.Confirm
 }
 
 // ResolvedDeviceID returns the command's own device_id when set, otherwise

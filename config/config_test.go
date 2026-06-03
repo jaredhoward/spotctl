@@ -121,7 +121,7 @@ func TestLoadAndSaveRoundTrip(t *testing.T) {
 						Action:   "play",
 						DeviceID: "dev1",
 						Params:   CommandParams{URI: "spotify:playlist:abc"},
-						Confirm:  true,
+						Confirm:  func() *bool { b := true; return &b }(),
 					},
 					{
 						Action:   "volume",

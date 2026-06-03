@@ -50,7 +50,7 @@ func CommandLabel(n int, c config.Command) string {
 	if c.DeviceID != "" {
 		parts = append(parts, fmt.Sprintf("device=%s", c.DeviceID))
 	}
-	if c.Confirm {
+	if c.ConfirmEnabled() {
 		parts = append(parts, "confirm")
 	}
 	if c.Name != "" {

@@ -40,7 +40,7 @@ func Build(name string, set config.Set, cfg *config.Config, depth int) (*RunSet,
 			label:  label,
 			action: a,
 			opts: ExecuteOptions{
-				Confirm:      cmd.Confirm,
+				Confirm:      cmd.ConfirmEnabled(),
 				Timeout:      timeout,
 				PollInterval: pollInterval,
 			},

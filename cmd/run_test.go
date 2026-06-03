@@ -85,6 +85,11 @@ func TestRunCmd_SetNotFound(t *testing.T) {
 func TestRunCmd_Success(t *testing.T) {
 	srv := mockSpotifyServer(t, map[string]http.HandlerFunc{
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			// Confirmation poll: return paused state so Pause.Confirmed resolves.
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"is_playing":false}`))
+		},
 	})
 	defer srv.Close()
 

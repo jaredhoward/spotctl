@@ -101,7 +101,7 @@ func TestSetRoundTrip(t *testing.T) {
 	if c0.Params.PlaylistID != "pl123" {
 		t.Errorf("command 0 playlist: got %q", c0.Params.PlaylistID)
 	}
-	if !c0.Confirm {
+	if c0.Confirm == nil || !*c0.Confirm {
 		t.Error("command 0 confirm: expected true")
 	}
 	if c0.OnTimeout != OnFailureFail {
@@ -142,6 +142,28 @@ func TestSetRoundTrip(t *testing.T) {
 	}
 	if len(warmup.Commands) != 1 || warmup.Commands[0].Action != "next" {
 		t.Errorf("warmup commands unexpected: %+v", warmup.Commands)
+	}
+}
+
+// ----- ConfirmEnabled ------------------------------------------------------
+
+func TestConfirmEnabled(t *testing.T) {
+	// nil (not set) defaults to true.
+	c := Command{}
+	if !c.ConfirmEnabled() {
+		t.Error("expected ConfirmEnabled=true when Confirm is nil")
+	}
+	// Explicit true.
+	v := true
+	c.Confirm = &v
+	if !c.ConfirmEnabled() {
+		t.Error("expected ConfirmEnabled=true when Confirm=true")
+	}
+	// Explicit false.
+	f := false
+	c.Confirm = &f
+	if c.ConfirmEnabled() {
+		t.Error("expected ConfirmEnabled=false when Confirm=false")
 	}
 }
 

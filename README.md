@@ -82,19 +82,14 @@ sets:
       - action: play
         params:
           uri: spotify:playlist:PLAYLIST_ID
-        confirm: true
         timeout: 20s
         on_timeout: fail
       - action: shuffle
         params:
           enabled: true
-        confirm: true
-        timeout: 5s
       - action: repeat
         params:
           state: context
-        confirm: true
-        timeout: 5s
 ```
 
 #### Set-level fields
@@ -114,7 +109,7 @@ Each command in a set has:
 | `action` | *(required)* | See actions table below |
 | `device_id` | — | Spotify device ID for this command. Overrides the set-level `device_id`. Omit to target the active device. |
 | `params` | — | Action-specific parameters (see below) |
-| `confirm` | `false` | Poll Spotify state until the action is reflected before continuing |
+| `confirm` | `true` | Poll Spotify state until the action is reflected before continuing. Set to `false` to fire-and-forget. |
 | `timeout` | `15s` | Overall deadline for the command including confirmation polling |
 | `on_error` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
 | `on_timeout` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |

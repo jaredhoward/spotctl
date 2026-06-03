@@ -45,6 +45,11 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 			return ctx.Err()
 		default:
 		}
+		// Check Confirmed with nil first — actions like Sleep that don't need
+		// a state fetch will return true immediately without an API call.
+		if a.Confirmed(nil) {
+			return nil
+		}
 		state, err := c.GetCurrentPlayback()
 		if err != nil {
 			time.Sleep(pollInterval)
