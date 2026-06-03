@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/jaredhoward/spotctl/config"
+	"github.com/jaredhoward/spotctl/spotify"
 )
 
 func TestPauseCmd_Success(t *testing.T) {
@@ -53,13 +55,22 @@ func TestNextCmd_Success(t *testing.T) {
 	nextDeviceID = "dev-1"
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
-	called := false
+	actionCalled := false
+	snapshotState, _ := json.Marshal(spotify.PlaybackState{Item: &spotify.Track{URI: "spotify:track:prior"}})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		if r.Method != http.MethodPost || r.URL.Path != "/next" {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			// Snapshot call from Next.Dispatch.
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(snapshotState)
+		case r.Method == http.MethodPost && r.URL.Path == "/next":
+			actionCalled = true
+			w.WriteHeader(http.StatusNoContent)
+		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
@@ -68,7 +79,7 @@ func TestNextCmd_Success(t *testing.T) {
 	if err := nextCmd.RunE(nextCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !called {
+	if !actionCalled {
 		t.Error("expected next API to be called")
 	}
 }
@@ -84,13 +95,22 @@ func TestPreviousCmd_Success(t *testing.T) {
 	previousDeviceID = "dev-1"
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
-	called := false
+	actionCalled := false
+	snapshotState, _ := json.Marshal(spotify.PlaybackState{Item: &spotify.Track{URI: "spotify:track:prior"}})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		if r.Method != http.MethodPost || r.URL.Path != "/previous" {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			// Snapshot call from Previous.Dispatch.
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(snapshotState)
+		case r.Method == http.MethodPost && r.URL.Path == "/previous":
+			actionCalled = true
+			w.WriteHeader(http.StatusNoContent)
+		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
@@ -99,7 +119,7 @@ func TestPreviousCmd_Success(t *testing.T) {
 	if err := previousCmd.RunE(previousCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !called {
+	if !actionCalled {
 		t.Error("expected previous API to be called")
 	}
 }

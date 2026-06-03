@@ -250,12 +250,17 @@ func TestRunSet_PlayNoConfirm(t *testing.T) {
 }
 
 func TestRunSet_PlayAndConfirm(t *testing.T) {
+	// Poll state must include Device.ID matching the command's DeviceID so that
+	// Play.Confirmed (which now checks device ID when no ContextURI is set) resolves.
 	pollCount := 0
 	srv := mockServer(t, map[string]http.HandlerFunc{
 		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
 		"GET /": func(w http.ResponseWriter, r *http.Request) {
 			pollCount++
-			w.Write(stateBody(spotify.PlaybackState{IsPlaying: true}))
+			w.Write(stateBody(spotify.PlaybackState{
+				IsPlaying: true,
+				Device:    spotify.Device{ID: "d1"},
+			}))
 		},
 	})
 	defer srv.Close()
@@ -361,6 +366,7 @@ func TestRunSet_ConfirmTimeout_SkipRemaining(t *testing.T) {
 func TestRunSet_CommandError_Continue(t *testing.T) {
 	pauseCalled := false
 	srv := mockServer(t, map[string]http.HandlerFunc{
+		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, // snapshot
 		"POST /next": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { pauseCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
@@ -388,6 +394,7 @@ func TestRunSet_CommandError_Continue(t *testing.T) {
 
 func TestRunSet_CommandError_Fail(t *testing.T) {
 	srv := mockServer(t, map[string]http.HandlerFunc{
+		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, // snapshot
 		"POST /next": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
 	})
 	defer srv.Close()
@@ -410,6 +417,7 @@ func TestRunSet_CommandError_Fail(t *testing.T) {
 func TestRunSet_CommandError_SkipRemaining(t *testing.T) {
 	pauseCalled := false
 	srv := mockServer(t, map[string]http.HandlerFunc{
+		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, // snapshot
 		"POST /next": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { pauseCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
@@ -437,6 +445,7 @@ func TestRunSet_CommandError_SkipRemaining(t *testing.T) {
 
 func TestRunSet_CommandOverridesSetDefault(t *testing.T) {
 	srv := mockServer(t, map[string]http.HandlerFunc{
+		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, // snapshot
 		"POST /next": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
 	})
 	defer srv.Close()
@@ -536,15 +545,25 @@ func TestBuild_UnknownAction(t *testing.T) {
 // ---- Spotify action types: Confirmed ----------------------------------------
 
 func TestPlay_Confirmed(t *testing.T) {
+	// Play without DeviceID or ContextURI: only IsPlaying matters.
 	a := &spotify.Play{}
 	if !a.Confirmed(&spotify.PlaybackState{IsPlaying: true}) {
-		t.Error("expected confirmed when is_playing=true")
+		t.Error("expected confirmed when is_playing=true and no constraints")
 	}
 	if a.Confirmed(&spotify.PlaybackState{IsPlaying: false}) {
 		t.Error("expected not confirmed when is_playing=false")
 	}
 	if a.Confirmed(nil) {
 		t.Error("expected not confirmed for nil state")
+	}
+
+	// Play with DeviceID: must match active device.
+	ad := &spotify.Play{DeviceID: "d1"}
+	if !ad.Confirmed(&spotify.PlaybackState{IsPlaying: true, Device: spotify.Device{ID: "d1"}}) {
+		t.Error("expected confirmed when device matches")
+	}
+	if ad.Confirmed(&spotify.PlaybackState{IsPlaying: true, Device: spotify.Device{ID: "other"}}) {
+		t.Error("expected not confirmed when device differs")
 	}
 }
 
@@ -610,6 +629,8 @@ func TestTransfer_Confirmed(t *testing.T) {
 // ---- Execute: confirm polling with transient errors -------------------------
 
 func TestExecute_ConfirmPollError(t *testing.T) {
+	// Poll state must include Device.ID matching the command's DeviceID so that
+	// Play.Confirmed resolves once the transient errors clear.
 	pollCount := 0
 	srv := mockServer(t, map[string]http.HandlerFunc{
 		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
@@ -619,7 +640,10 @@ func TestExecute_ConfirmPollError(t *testing.T) {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
-			w.Write(stateBody(spotify.PlaybackState{IsPlaying: true}))
+			w.Write(stateBody(spotify.PlaybackState{
+				IsPlaying: true,
+				Device:    spotify.Device{ID: "d1"},
+			}))
 		},
 	})
 	defer srv.Close()

@@ -8,235 +8,303 @@ import (
 	"testing"
 )
 
+// multiHandler routes requests to per-method+path handlers, failing the test
+// on any unregistered route. Used for actions that make a snapshot GET before
+// their primary call.
+func multiHandler(t *testing.T, routes map[string]http.HandlerFunc) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := r.Method + " " + r.URL.Path
+		if fn, ok := routes[key]; ok {
+			fn(w, r)
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
 func TestActions(t *testing.T) {
 	oldURLPlayer := URLPlayer
 	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
+	snapshotState, _ := json.Marshal(PlaybackState{Item: &Track{URI: "spotify:track:prior"}})
+	snapshotHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(snapshotState)
+	}
+
 	var tests = []struct {
-		name    string
-		action  Action
-		path    string
-		method  string
-		handler http.HandlerFunc
+		name   string
+		action Action
+		routes map[string]http.HandlerFunc
 	}{
-		// Next actions
+		// Next
 		{
-			name: "next with device", action: &Next{DeviceID: "device"},
-			path: "/next", method: http.MethodPost,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("device_id"); got != "device" {
-					t.Errorf("expected device_id=device, got %q", got)
-				}
+			name:   "next with device",
+			action: &Next{DeviceID: "device"},
+			routes: map[string]http.HandlerFunc{
+				"GET /": snapshotHandler,
+				"POST /next": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("device_id"); got != "device" {
+						t.Errorf("expected device_id=device, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 		{
-			name: "next without device", action: &Next{DeviceID: ""},
-			path: "/next", method: http.MethodPost,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("device_id"); got != "" {
-					t.Errorf("expected device_id=, got %q", got)
-				}
-			},
-		},
-
-		// Pause actions
-		{
-			name: "pause with device", action: &Pause{DeviceID: "device"},
-			path: "/pause", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("device_id"); got != "device" {
-					t.Errorf("expected device_id=device, got %q", got)
-				}
-			},
-		},
-		{
-			name: "pause without device", action: &Pause{DeviceID: ""},
-			path: "/pause", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("device_id"); got != "" {
-					t.Errorf("expected device_id=, got %q", got)
-				}
+			name:   "next without device",
+			action: &Next{DeviceID: ""},
+			routes: map[string]http.HandlerFunc{
+				"GET /": snapshotHandler,
+				"POST /next": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("device_id"); got != "" {
+						t.Errorf("expected no device_id, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 
-		// Play actions
+		// Previous
 		{
-			name: "play without device id", action: &Play{},
-			path: "/play", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("device_id"); got != "" {
-					t.Errorf("expected no device_id, got %q", got)
-				}
+			name:   "previous with device",
+			action: &Previous{DeviceID: "device"},
+			routes: map[string]http.HandlerFunc{
+				"GET /": snapshotHandler,
+				"POST /previous": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("device_id"); got != "device" {
+						t.Errorf("expected device_id=device, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 		{
-			name: "play with context", action: &Play{DeviceID: "device", ContextURI: "spotify:track:abc"},
-			path: "/play", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				var payload map[string]string
-				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-					t.Fatal(err)
-				}
-				if payload["context_uri"] != "spotify:track:abc" {
-					t.Fatalf("expected context_uri set, got %v", payload)
-				}
-			},
-		},
-		{
-			name: "play without context", action: &Play{DeviceID: "device", ContextURI: ""},
-			path: "/play", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				buf := make([]byte, 1)
-				n, _ := r.Body.Read(buf)
-				if n != 0 {
-					t.Fatalf("expected empty body, got %d bytes", n)
-				}
+			name:   "previous without device",
+			action: &Previous{DeviceID: ""},
+			routes: map[string]http.HandlerFunc{
+				"GET /": snapshotHandler,
+				"POST /previous": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("device_id"); got != "" {
+						t.Errorf("expected no device_id, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 
-		// Previous actions
+		// Pause
 		{
-			name: "previous with device", action: &Previous{DeviceID: "device"},
-			path: "/previous", method: http.MethodPost,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("device_id"); got != "device" {
-					t.Errorf("expected device_id=device, got %q", got)
-				}
+			name:   "pause with device",
+			action: &Pause{DeviceID: "device"},
+			routes: map[string]http.HandlerFunc{
+				"PUT /pause": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("device_id"); got != "device" {
+						t.Errorf("expected device_id=device, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 		{
-			name: "previous without device", action: &Previous{DeviceID: ""},
-			path: "/previous", method: http.MethodPost,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("device_id"); got != "" {
-					t.Errorf("expected device_id=, got %q", got)
-				}
-			},
-		},
-
-		// Repeat actions
-		{
-			name: "repeat off with device", action: &Repeat{DeviceID: "dev1", State: "off"},
-			path: "/repeat", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("device_id"); got != "dev1" {
-					t.Errorf("expected device_id=, got %q", got)
-				}
-				if got := r.URL.Query().Get("state"); got != "off" {
-					t.Errorf("expected state=off, got %q", got)
-				}
-			},
-		},
-		{
-			name: "repeat track with device", action: &Repeat{DeviceID: "dev1", State: "track"},
-			path: "/repeat", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("device_id"); got != "dev1" {
-					t.Errorf("expected device_id=dev1, got %q", got)
-				}
-				if got := r.URL.Query().Get("state"); got != "track" {
-					t.Errorf("expected state=track, got %q", got)
-				}
-			},
-		},
-		{
-			name: "repeat context no device", action: &Repeat{DeviceID: "", State: "context"},
-			path: "/repeat", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("device_id"); got != "" {
-					t.Errorf("expected device_id=, got %q", got)
-				}
-				if got := r.URL.Query().Get("state"); got != "context" {
-					t.Errorf("expected state=context, got %q", got)
-				}
+			name:   "pause without device",
+			action: &Pause{DeviceID: ""},
+			routes: map[string]http.HandlerFunc{
+				"PUT /pause": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("device_id"); got != "" {
+						t.Errorf("expected no device_id, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 
-		// Shuffle actions
+		// Play
 		{
-			name: "shuffle enabled with device", action: &Shuffle{DeviceID: "device", Enabled: true},
-			path: "/shuffle", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("state"); got != "true" {
-					t.Errorf("expected state=true, got %q", got)
-				}
-				if got := r.URL.Query().Get("device_id"); got != "device" {
-					t.Errorf("expected device_id=device, got %q", got)
-				}
+			name:   "play without device id",
+			action: &Play{},
+			routes: map[string]http.HandlerFunc{
+				// Play with no ContextURI snapshots current state first.
+				"GET /": snapshotHandler,
+				"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("device_id"); got != "" {
+						t.Errorf("expected no device_id, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 		{
-			name: "shuffle disabled without device", action: &Shuffle{DeviceID: "", Enabled: false},
-			path: "/shuffle", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("state"); got != "false" {
-					t.Errorf("expected state=false, got %q", got)
-				}
-				if got := r.URL.Query().Get("device_id"); got != "" {
-					t.Errorf("expected device_id=, got %q", got)
-				}
+			name:   "play with context",
+			action: &Play{DeviceID: "device", ContextURI: "spotify:track:abc"},
+			routes: map[string]http.HandlerFunc{
+				// ContextURI path does not snapshot.
+				"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+					var payload map[string]string
+					if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+						t.Fatal(err)
+					}
+					if payload["context_uri"] != "spotify:track:abc" {
+						t.Fatalf("expected context_uri set, got %v", payload)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
+			},
+		},
+		{
+			name:   "play with device no context",
+			action: &Play{DeviceID: "device"},
+			routes: map[string]http.HandlerFunc{
+				// DeviceID but no ContextURI — snapshots current state.
+				"GET /": snapshotHandler,
+				"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("device_id"); got != "device" {
+						t.Errorf("expected device_id=device, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 
-		// Transfer actions
+		// Repeat
 		{
-			name: "transfer with play", action: &Transfer{DeviceID: "device", Play: true},
-			path: "/", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				var payload map[string]interface{}
-				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-					t.Fatal(err)
-				}
-				if payload["play"] != true {
-					t.Fatalf("expected play true, got %#v", payload)
-				}
-				deviceIDs, ok := payload["device_ids"].([]interface{})
-				if !ok || len(deviceIDs) != 1 || deviceIDs[0] != "device" {
-					t.Fatalf("unexpected device_ids payload: %v", payload["device_ids"])
-				}
+			name:   "repeat off with device",
+			action: &Repeat{DeviceID: "dev1", State: "off"},
+			routes: map[string]http.HandlerFunc{
+				"PUT /repeat": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("device_id"); got != "dev1" {
+						t.Errorf("expected device_id=dev1, got %q", got)
+					}
+					if got := r.URL.Query().Get("state"); got != "off" {
+						t.Errorf("expected state=off, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
+			},
+		},
+		{
+			name:   "repeat track with device",
+			action: &Repeat{DeviceID: "dev1", State: "track"},
+			routes: map[string]http.HandlerFunc{
+				"PUT /repeat": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("state"); got != "track" {
+						t.Errorf("expected state=track, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
+			},
+		},
+		{
+			name:   "repeat context no device",
+			action: &Repeat{DeviceID: "", State: "context"},
+			routes: map[string]http.HandlerFunc{
+				"PUT /repeat": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("device_id"); got != "" {
+						t.Errorf("expected no device_id, got %q", got)
+					}
+					if got := r.URL.Query().Get("state"); got != "context" {
+						t.Errorf("expected state=context, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 
-		// Volume actions
+		// Shuffle
 		{
-			name: "set volume with device", action: &Volume{DeviceID: "device", Level: 42},
-			path: "/volume", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("volume_percent"); got != "42" {
-					t.Errorf("expected volume_percent=42, got %q", got)
-				}
-				if got := r.URL.Query().Get("device_id"); got != "device" {
-					t.Errorf("expected device_id=device, got %q", got)
-				}
+			name:   "shuffle enabled with device",
+			action: &Shuffle{DeviceID: "device", Enabled: true},
+			routes: map[string]http.HandlerFunc{
+				"PUT /shuffle": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("state"); got != "true" {
+						t.Errorf("expected state=true, got %q", got)
+					}
+					if got := r.URL.Query().Get("device_id"); got != "device" {
+						t.Errorf("expected device_id=device, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 		{
-			name: "set volume without device", action: &Volume{DeviceID: "", Level: 10},
-			path: "/volume", method: http.MethodPut,
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if got := r.URL.Query().Get("volume_percent"); got != "10" {
-					t.Errorf("expected volume_percent=10, got %q", got)
-				}
-				if got := r.URL.Query().Get("device_id"); got != "" {
-					t.Errorf("expected device_id=, got %q", got)
-				}
+			name:   "shuffle disabled without device",
+			action: &Shuffle{DeviceID: "", Enabled: false},
+			routes: map[string]http.HandlerFunc{
+				"PUT /shuffle": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("state"); got != "false" {
+						t.Errorf("expected state=false, got %q", got)
+					}
+					if got := r.URL.Query().Get("device_id"); got != "" {
+						t.Errorf("expected no device_id, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
+			},
+		},
+
+		// Transfer
+		{
+			name:   "transfer with play",
+			action: &Transfer{DeviceID: "device", Play: true},
+			routes: map[string]http.HandlerFunc{
+				"PUT /": func(w http.ResponseWriter, r *http.Request) {
+					var payload map[string]interface{}
+					if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+						t.Fatal(err)
+					}
+					if payload["play"] != true {
+						t.Fatalf("expected play=true, got %#v", payload)
+					}
+					deviceIDs, ok := payload["device_ids"].([]interface{})
+					if !ok || len(deviceIDs) != 1 || deviceIDs[0] != "device" {
+						t.Fatalf("unexpected device_ids: %v", payload["device_ids"])
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
+			},
+		},
+
+		// Volume
+		{
+			name:   "set volume with device",
+			action: &Volume{DeviceID: "device", Level: 42},
+			routes: map[string]http.HandlerFunc{
+				"PUT /volume": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("volume_percent"); got != "42" {
+						t.Errorf("expected volume_percent=42, got %q", got)
+					}
+					if got := r.URL.Query().Get("device_id"); got != "device" {
+						t.Errorf("expected device_id=device, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
+			},
+		},
+		{
+			name:   "set volume without device",
+			action: &Volume{DeviceID: "", Level: 10},
+			routes: map[string]http.HandlerFunc{
+				"PUT /volume": func(w http.ResponseWriter, r *http.Request) {
+					if got := r.URL.Query().Get("volume_percent"); got != "10" {
+						t.Errorf("expected volume_percent=10, got %q", got)
+					}
+					if got := r.URL.Query().Get("device_id"); got != "" {
+						t.Errorf("expected no device_id, got %q", got)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				},
 			},
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != tt.method || r.URL.Path != tt.path {
-					t.Fatalf("expected %s %s, got %s %s", tt.method, tt.path, r.Method, r.URL.Path)
-				}
-				tt.handler(w, r)
-				w.WriteHeader(http.StatusNoContent)
-			}))
+			server := httptest.NewServer(multiHandler(t, tt.routes))
 			defer server.Close()
-
 			URLPlayer = server.URL
 			client := &Client{accessToken: "t", httpClient: server.Client()}
-
 			if err := tt.action.Dispatch(context.Background(), client); err != nil {
 				t.Fatal(err)
 			}
@@ -248,49 +316,48 @@ func TestActions_ErrorResponse(t *testing.T) {
 	oldURLPlayer := URLPlayer
 	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-	}))
-	defer server.Close()
-
-	URLPlayer = server.URL
-	client := &Client{accessToken: "t", httpClient: server.Client()}
+	snapshotOK := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(PlaybackState{Item: &Track{URI: "spotify:track:prior"}})
+	}
+	forbidden := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) }
 
 	var tests = []struct {
 		name   string
 		action Action
+		routes map[string]http.HandlerFunc
 	}{
-		{
-			name:   "next",
-			action: &Next{DeviceID: "device"},
-		},
-		{
-			name:   "pause",
-			action: &Pause{DeviceID: "device"},
-		},
-		{
-			name:   "play",
-			action: &Play{DeviceID: "device", ContextURI: "spotify:track:abc"},
-		},
-		{
-			name:   "previous",
-			action: &Previous{DeviceID: "device"},
-		},
-		{
-			name:   "shuffle",
-			action: &Shuffle{DeviceID: "device", Enabled: true},
-		},
-		{
-			name:   "transfer",
-			action: &Transfer{DeviceID: "device", Play: false},
-		},
-		{
-			name:   "volume",
-			action: &Volume{DeviceID: "device", Level: 50},
-		},
+		{name: "next", action: &Next{DeviceID: "device"}, routes: map[string]http.HandlerFunc{
+			"GET /": snapshotOK, "POST /next": forbidden,
+		}},
+		{name: "pause", action: &Pause{DeviceID: "device"}, routes: map[string]http.HandlerFunc{
+			"PUT /pause": forbidden,
+		}},
+		{name: "play with context", action: &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}, routes: map[string]http.HandlerFunc{
+			"PUT /play": forbidden,
+		}},
+		{name: "play without context", action: &Play{DeviceID: "device"}, routes: map[string]http.HandlerFunc{
+			"GET /": snapshotOK, "PUT /play": forbidden,
+		}},
+		{name: "previous", action: &Previous{DeviceID: "device"}, routes: map[string]http.HandlerFunc{
+			"GET /": snapshotOK, "POST /previous": forbidden,
+		}},
+		{name: "shuffle", action: &Shuffle{DeviceID: "device", Enabled: true}, routes: map[string]http.HandlerFunc{
+			"PUT /shuffle": forbidden,
+		}},
+		{name: "transfer", action: &Transfer{DeviceID: "device", Play: false}, routes: map[string]http.HandlerFunc{
+			"PUT /": forbidden,
+		}},
+		{name: "volume", action: &Volume{DeviceID: "device", Level: 50}, routes: map[string]http.HandlerFunc{
+			"PUT /volume": forbidden,
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(multiHandler(t, tt.routes))
+			defer server.Close()
+			URLPlayer = server.URL
+			client := &Client{accessToken: "t", httpClient: server.Client()}
 			if err := tt.action.Dispatch(context.Background(), client); err == nil {
 				t.Fatal("expected error for non-2xx response")
 			}
@@ -306,84 +373,252 @@ func TestSpotifyActionLabelsAndConfirmed(t *testing.T) {
 		wantLabel     string
 		wantConfirmed bool
 	}{
+		// Play: ContextURI path
 		{
-			name:          "play with uri and matching context",
+			name:          "play with uri matching context",
 			action:        &Play{DeviceID: "device", ContextURI: "spotify:track:abc"},
 			state:         &PlaybackState{IsPlaying: true, Context: &PlaybackContext{URI: "spotify:track:abc"}},
 			wantLabel:     "play uri=spotify:track:abc device=device",
 			wantConfirmed: true,
 		},
 		{
-			name:          "play with uri and mismatched context",
+			name:          "play with uri mismatched context",
 			action:        &Play{DeviceID: "device", ContextURI: "spotify:track:abc"},
 			state:         &PlaybackState{IsPlaying: true, Context: &PlaybackContext{URI: "spotify:playlist:xyz"}},
 			wantLabel:     "play uri=spotify:track:abc device=device",
 			wantConfirmed: false,
 		},
+
+		// Play: DeviceID path
 		{
-			name:          "play without uri",
+			name:          "play without uri confirmed by device",
+			action:        &Play{DeviceID: "device"},
+			state:         &PlaybackState{IsPlaying: true, Device: Device{ID: "device"}},
+			wantLabel:     "play device=device",
+			wantConfirmed: true,
+		},
+		{
+			name:          "play without uri wrong device",
+			action:        &Play{DeviceID: "device"},
+			state:         &PlaybackState{IsPlaying: true, Device: Device{ID: "other"}},
+			wantLabel:     "play device=device",
+			wantConfirmed: false,
+		},
+		{
+			name:          "play without uri not playing",
 			action:        &Play{DeviceID: "device"},
 			state:         &PlaybackState{IsPlaying: false},
 			wantLabel:     "play device=device",
 			wantConfirmed: false,
 		},
+
+		// Play: no constraints, priorState available — change detection
 		{
-			name:          "pause",
+			name: "play no constraints was paused now playing",
+			action: &Play{
+				priorState: &PlaybackState{IsPlaying: false, Device: Device{ID: "d1"}},
+			},
+			state:         &PlaybackState{IsPlaying: true, Device: Device{ID: "d1"}},
+			wantLabel:     "play device=",
+			wantConfirmed: true,
+		},
+		{
+			name: "play no constraints device changed",
+			action: &Play{
+				priorState: &PlaybackState{IsPlaying: true, Device: Device{ID: "d1"}},
+			},
+			state:         &PlaybackState{IsPlaying: true, Device: Device{ID: "d2"}},
+			wantLabel:     "play device=",
+			wantConfirmed: true,
+		},
+		{
+			name: "play no constraints already playing same device",
+			action: &Play{
+				priorState: &PlaybackState{IsPlaying: true, Device: Device{ID: "d1"}},
+			},
+			state:         &PlaybackState{IsPlaying: true, Device: Device{ID: "d1"}},
+			wantLabel:     "play device=",
+			wantConfirmed: false,
+		},
+		{
+			name:          "play no constraints nil priorState falls back to IsPlaying",
+			action:        &Play{},
+			state:         &PlaybackState{IsPlaying: true},
+			wantLabel:     "play device=",
+			wantConfirmed: true,
+		},
+		{
+			name:          "play no constraints nil state",
+			action:        &Play{},
+			state:         nil,
+			wantLabel:     "play device=",
+			wantConfirmed: false,
+		},
+
+		// Pause
+		{
+			name:          "pause confirmed",
 			action:        &Pause{DeviceID: "device"},
 			state:         &PlaybackState{IsPlaying: false},
 			wantLabel:     "pause device=device",
 			wantConfirmed: true,
 		},
+
+		// Next: priorState available
 		{
-			name:          "next",
+			name:          "next track changed",
+			action:        &Next{DeviceID: "device", priorState: &PlaybackState{Item: &Track{URI: "spotify:track:old"}}},
+			state:         &PlaybackState{Item: &Track{URI: "spotify:track:new"}},
+			wantLabel:     "next device=device",
+			wantConfirmed: true,
+		},
+		{
+			name:          "next track unchanged",
+			action:        &Next{DeviceID: "device", priorState: &PlaybackState{Item: &Track{URI: "spotify:track:old"}}},
+			state:         &PlaybackState{Item: &Track{URI: "spotify:track:old"}},
+			wantLabel:     "next device=device",
+			wantConfirmed: false,
+		},
+		// Next: priorState nil — unconfirmable, returns false
+		{
+			name:          "next nil priorState returns false",
 			action:        &Next{DeviceID: "device"},
-			state:         nil,
+			state:         &PlaybackState{Item: &Track{URI: "spotify:track:new"}},
+			wantLabel:     "next device=device",
+			wantConfirmed: false,
+		},
+		// Next: priorState has no item — unconfirmable
+		{
+			name:          "next priorState no item returns false",
+			action:        &Next{DeviceID: "device", priorState: &PlaybackState{}},
+			state:         &PlaybackState{Item: &Track{URI: "spotify:track:new"}},
 			wantLabel:     "next device=device",
 			wantConfirmed: false,
 		},
 		{
-			name:          "previous",
-			action:        &Previous{DeviceID: "device"},
+			name:          "next nil current state",
+			action:        &Next{DeviceID: "device", priorState: &PlaybackState{Item: &Track{URI: "spotify:track:old"}}},
 			state:         nil,
+			wantLabel:     "next device=device",
+			wantConfirmed: false,
+		},
+
+		// Previous: mirrors Next
+		{
+			name:          "previous track changed",
+			action:        &Previous{DeviceID: "device", priorState: &PlaybackState{Item: &Track{URI: "spotify:track:old"}}},
+			state:         &PlaybackState{Item: &Track{URI: "spotify:track:new"}},
+			wantLabel:     "previous device=device",
+			wantConfirmed: true,
+		},
+		{
+			name:          "previous track unchanged",
+			action:        &Previous{DeviceID: "device", priorState: &PlaybackState{Item: &Track{URI: "spotify:track:old"}}},
+			state:         &PlaybackState{Item: &Track{URI: "spotify:track:old"}},
 			wantLabel:     "previous device=device",
 			wantConfirmed: false,
 		},
 		{
-			name:          "shuffle",
+			name:          "previous nil priorState returns false",
+			action:        &Previous{DeviceID: "device"},
+			state:         &PlaybackState{Item: &Track{URI: "spotify:track:new"}},
+			wantLabel:     "previous device=device",
+			wantConfirmed: false,
+		},
+		{
+			name:          "previous priorState no item returns false",
+			action:        &Previous{DeviceID: "device", priorState: &PlaybackState{}},
+			state:         &PlaybackState{Item: &Track{URI: "spotify:track:new"}},
+			wantLabel:     "previous device=device",
+			wantConfirmed: false,
+		},
+
+		// Shuffle
+		{
+			name:          "shuffle enabled confirmed",
 			action:        &Shuffle{DeviceID: "device", Enabled: true},
 			state:         &PlaybackState{ShuffleState: true},
 			wantLabel:     "shuffle enabled=true device=device",
 			wantConfirmed: true,
 		},
 		{
-			name:          "repeat",
+			name:          "shuffle disabled confirmed",
+			action:        &Shuffle{DeviceID: "device", Enabled: false},
+			state:         &PlaybackState{ShuffleState: false},
+			wantLabel:     "shuffle enabled=false device=device",
+			wantConfirmed: true,
+		},
+		{
+			name:          "shuffle mismatch",
+			action:        &Shuffle{DeviceID: "device", Enabled: true},
+			state:         &PlaybackState{ShuffleState: false},
+			wantLabel:     "shuffle enabled=true device=device",
+			wantConfirmed: false,
+		},
+
+		// Repeat
+		{
+			name:          "repeat track confirmed",
 			action:        &Repeat{DeviceID: "device", State: "track"},
 			state:         &PlaybackState{RepeatState: "track"},
 			wantLabel:     "repeat state=track device=device",
 			wantConfirmed: true,
 		},
 		{
-			name:          "volume",
+			name:          "repeat mismatch",
+			action:        &Repeat{DeviceID: "device", State: "track"},
+			state:         &PlaybackState{RepeatState: "off"},
+			wantLabel:     "repeat state=track device=device",
+			wantConfirmed: false,
+		},
+
+		// Volume
+		{
+			name:          "volume exact match",
+			action:        &Volume{DeviceID: "device", Level: 42},
+			state:         &PlaybackState{Device: Device{VolumePercent: 42}},
+			wantLabel:     "volume level=42 device=device",
+			wantConfirmed: true,
+		},
+		{
+			name:          "volume within tolerance",
 			action:        &Volume{DeviceID: "device", Level: 42},
 			state:         &PlaybackState{Device: Device{VolumePercent: 41}},
 			wantLabel:     "volume level=42 device=device",
 			wantConfirmed: true,
 		},
 		{
-			name:          "transfer",
+			name:          "volume outside tolerance",
+			action:        &Volume{DeviceID: "device", Level: 42},
+			state:         &PlaybackState{Device: Device{VolumePercent: 30}},
+			wantLabel:     "volume level=42 device=device",
+			wantConfirmed: false,
+		},
+
+		// Transfer
+		{
+			name:          "transfer confirmed",
 			action:        &Transfer{DeviceID: "device", Play: false},
 			state:         &PlaybackState{Device: Device{ID: "device"}},
 			wantLabel:     "transfer device=device play=false",
 			wantConfirmed: true,
 		},
 		{
-			name:          "transfer with play",
+			name:          "transfer with play confirmed",
 			action:        &Transfer{DeviceID: "device", Play: true},
 			state:         &PlaybackState{Device: Device{ID: "device"}, IsPlaying: true},
 			wantLabel:     "transfer device=device play=true",
 			wantConfirmed: true,
 		},
+		{
+			name:          "transfer with play not yet playing",
+			action:        &Transfer{DeviceID: "device", Play: true},
+			state:         &PlaybackState{Device: Device{ID: "device"}, IsPlaying: false},
+			wantLabel:     "transfer device=device play=true",
+			wantConfirmed: false,
+		},
 	}
+
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.action.Label(); got != tt.wantLabel {
@@ -394,4 +629,100 @@ func TestSpotifyActionLabelsAndConfirmed(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSnapshotDispatch verifies that Next, Previous, and Play (no ContextURI)
+// capture priorState during Dispatch and use it correctly in Confirmed.
+func TestSnapshotDispatch(t *testing.T) {
+	oldURLPlayer := URLPlayer
+	t.Cleanup(func() { URLPlayer = oldURLPlayer })
+
+	priorPlayback := PlaybackState{
+		IsPlaying: true,
+		Device:    Device{ID: "prior-device"},
+		Item:      &Track{URI: "spotify:track:prior"},
+	}
+	snapshotBody, _ := json.Marshal(priorPlayback)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(snapshotBody)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	URLPlayer = srv.URL
+	client := NewClient("token")
+	client.SetHTTPClient(srv.Client())
+
+	t.Run("next captures priorState", func(t *testing.T) {
+		n := &Next{DeviceID: "device"}
+		if err := n.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if n.priorState == nil || n.priorState.Item == nil {
+			t.Fatal("expected priorState with item to be captured")
+		}
+		if n.priorState.Item.URI != "spotify:track:prior" {
+			t.Fatalf("expected priorState URI=spotify:track:prior, got %q", n.priorState.Item.URI)
+		}
+		// Track changed: confirmed.
+		if !n.Confirmed(&PlaybackState{Item: &Track{URI: "spotify:track:new"}}) {
+			t.Fatal("expected Confirmed=true when track changed")
+		}
+		// Track unchanged: not confirmed.
+		if n.Confirmed(&PlaybackState{Item: &Track{URI: "spotify:track:prior"}}) {
+			t.Fatal("expected Confirmed=false when track unchanged")
+		}
+	})
+
+	t.Run("previous captures priorState", func(t *testing.T) {
+		p := &Previous{DeviceID: "device"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.priorState == nil || p.priorState.Item == nil {
+			t.Fatal("expected priorState with item to be captured")
+		}
+		if !p.Confirmed(&PlaybackState{Item: &Track{URI: "spotify:track:new"}}) {
+			t.Fatal("expected Confirmed=true when track changed")
+		}
+		if p.Confirmed(&PlaybackState{Item: &Track{URI: "spotify:track:prior"}}) {
+			t.Fatal("expected Confirmed=false when track unchanged")
+		}
+	})
+
+	t.Run("play no context captures priorState", func(t *testing.T) {
+		p := &Play{DeviceID: ""}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.priorState == nil {
+			t.Fatal("expected priorState to be captured for play without ContextURI")
+		}
+		if p.priorState.Device.ID != "prior-device" {
+			t.Fatalf("expected priorState device=prior-device, got %q", p.priorState.Device.ID)
+		}
+		// Was playing on prior-device; now playing on a new device — confirmed.
+		if !p.Confirmed(&PlaybackState{IsPlaying: true, Device: Device{ID: "new-device"}}) {
+			t.Fatal("expected Confirmed=true when device changed")
+		}
+		// Was playing; still playing on same device — not confirmed.
+		if p.Confirmed(&PlaybackState{IsPlaying: true, Device: Device{ID: "prior-device"}}) {
+			t.Fatal("expected Confirmed=false when device unchanged and was already playing")
+		}
+	})
+
+	t.Run("play with context does not snapshot", func(t *testing.T) {
+		p := &Play{ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.priorState != nil {
+			t.Fatal("expected priorState to be nil when ContextURI is set")
+		}
+	})
 }

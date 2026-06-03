@@ -22,12 +22,29 @@ type Action interface {
 
 // Play starts or resumes playback, optionally on a specific device and/or
 // with a specific context URI.
+//
+// Confirmation signal strength:
+//   - ContextURI set: strong — verifies context URI matches.
+//   - DeviceID set, no ContextURI: strong — verifies active device and IsPlaying.
+//   - Neither set: weak — priorState is captured at Dispatch time to detect a
+//     meaningful change (IsPlaying flipped, or active device changed). If the
+//     snapshot fails or nothing was active, falls back to bare IsPlaying check,
+//     which cannot distinguish a no-op from a successful play.
 type Play struct {
 	DeviceID   string
 	ContextURI string
+	priorState *PlaybackState // captured at Dispatch when no ContextURI is set
 }
 
-func (p *Play) Dispatch(_ context.Context, c *Client) error {
+func (p *Play) Dispatch(ctx context.Context, c *Client) error {
+	// Snapshot current state before dispatching when we have no ContextURI to
+	// verify against. Used by Confirmed to detect a meaningful state change.
+	if p.ContextURI == "" {
+		if state, err := c.GetCurrentPlayback(); err == nil {
+			p.priorState = state
+		}
+	}
+
 	var reqBody io.Reader
 	if p.ContextURI != "" {
 		body, err := json.Marshal(map[string]string{"context_uri": p.ContextURI})
@@ -53,10 +70,25 @@ func (p *Play) Confirmed(state *PlaybackState) bool {
 	if state == nil || !state.IsPlaying {
 		return false
 	}
-	if p.ContextURI == "" {
-		return true
+	// Strong signal: verify the context URI landed.
+	if p.ContextURI != "" {
+		return state.Context != nil && state.Context.URI == p.ContextURI
 	}
-	return state.Context != nil && state.Context.URI == p.ContextURI
+	// Strong signal: verify playback is active on the intended device.
+	if p.DeviceID != "" {
+		return state.Device.ID == p.DeviceID
+	}
+	// Weak signal: no constraints to verify against. Use priorState to detect
+	// a meaningful change if available — either IsPlaying flipped from false,
+	// or the active device changed. If priorState is nil (snapshot failed or
+	// nothing was active), fall back to bare IsPlaying, which cannot distinguish
+	// a no-op from a successful play.
+	if p.priorState != nil {
+		wasPlaying := p.priorState.IsPlaying
+		priorDevice := p.priorState.Device.ID
+		return (!wasPlaying && state.IsPlaying) || (priorDevice != state.Device.ID)
+	}
+	return true
 }
 
 func (p *Play) Label() string {
@@ -84,11 +116,21 @@ func (p *Pause) Confirmed(state *PlaybackState) bool { return state != nil && !s
 func (p *Pause) Label() string                       { return fmt.Sprintf("pause device=%s", p.DeviceID) }
 
 // Next skips to the next track.
+//
+// Confirmation signal: strong when priorState is captured at Dispatch time —
+// verifies the track URI changed. If the snapshot fails or no track was active,
+// priorState is nil and Confirmed returns false, causing polling to continue
+// until timeout. This is intentional: an unverifiable confirmation is treated
+// as unconfirmed rather than assumed successful.
 type Next struct {
-	DeviceID string
+	DeviceID   string
+	priorState *PlaybackState // captured at Dispatch time for track-change detection
 }
 
-func (n *Next) Dispatch(_ context.Context, c *Client) error {
+func (n *Next) Dispatch(ctx context.Context, c *Client) error {
+	if state, err := c.GetCurrentPlayback(); err == nil {
+		n.priorState = state
+	}
 	req, err := http.NewRequest(http.MethodPost, playerURL(URLPlayer, "/next", n.DeviceID), nil)
 	if err != nil {
 		return fmt.Errorf("could not create next request: %w", err)
@@ -97,17 +139,32 @@ func (n *Next) Dispatch(_ context.Context, c *Client) error {
 	return c.doExpectSuccess(req, "next")
 }
 
-// Confirmed for Next is handled by snapshotAction in the actions package;
-// this default returns false so polling continues until the snapshot confirms.
-func (n *Next) Confirmed(_ *PlaybackState) bool { return false }
-func (n *Next) Label() string                   { return fmt.Sprintf("next device=%s", n.DeviceID) }
-
-// Previous returns to the previous track.
-type Previous struct {
-	DeviceID string
+func (n *Next) Confirmed(state *PlaybackState) bool {
+	if state == nil || state.Item == nil {
+		return false
+	}
+	if n.priorState == nil || n.priorState.Item == nil {
+		// Snapshot unavailable; cannot verify track changed. Polling will
+		// continue until timeout — see type-level doc comment.
+		return false
+	}
+	return state.Item.URI != n.priorState.Item.URI
 }
 
-func (p *Previous) Dispatch(_ context.Context, c *Client) error {
+func (n *Next) Label() string { return fmt.Sprintf("next device=%s", n.DeviceID) }
+
+// Previous returns to the previous track.
+//
+// Confirmation signal: same approach and caveats as Next.
+type Previous struct {
+	DeviceID   string
+	priorState *PlaybackState // captured at Dispatch time for track-change detection
+}
+
+func (p *Previous) Dispatch(ctx context.Context, c *Client) error {
+	if state, err := c.GetCurrentPlayback(); err == nil {
+		p.priorState = state
+	}
 	req, err := http.NewRequest(http.MethodPost, playerURL(URLPlayer, "/previous", p.DeviceID), nil)
 	if err != nil {
 		return fmt.Errorf("could not create previous request: %w", err)
@@ -116,10 +173,19 @@ func (p *Previous) Dispatch(_ context.Context, c *Client) error {
 	return c.doExpectSuccess(req, "previous")
 }
 
-func (p *Previous) Confirmed(_ *PlaybackState) bool { return false }
-func (p *Previous) Label() string {
-	return fmt.Sprintf("previous device=%s", p.DeviceID)
+func (p *Previous) Confirmed(state *PlaybackState) bool {
+	if state == nil || state.Item == nil {
+		return false
+	}
+	if p.priorState == nil || p.priorState.Item == nil {
+		// Snapshot unavailable; cannot verify track changed. Polling will
+		// continue until timeout — see type-level doc comment.
+		return false
+	}
+	return state.Item.URI != p.priorState.Item.URI
 }
+
+func (p *Previous) Label() string { return fmt.Sprintf("previous device=%s", p.DeviceID) }
 
 // Shuffle enables or disables shuffle.
 type Shuffle struct {

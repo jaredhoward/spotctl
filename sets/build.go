@@ -36,10 +36,6 @@ func Build(name string, set config.Set, cfg *config.Config, depth int) (*RunSet,
 		pollInterval := cfg.PlaybackPollIntervalDuration()
 		timeout := cmd.TimeoutDuration(config.DefaultConfirmTimeout)
 
-		if cmd.Confirm && (cmd.Action == "next" || cmd.Action == "previous") {
-			a = &snapshotAction{inner: a}
-		}
-
 		steps = append(steps, step{
 			label:  label,
 			action: a,

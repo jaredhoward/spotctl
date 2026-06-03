@@ -60,13 +60,24 @@ func TestPlayCmdRunE_NoDevice(t *testing.T) {
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 	resetPlayCmdFlags(t)
 
-	called := false
+	playCalled := false
+	snapshotState, _ := json.Marshal(spotify.PlaybackState{IsPlaying: false})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		if r.URL.Query().Get("device_id") != "" {
-			t.Errorf("expected no device_id, got %q", r.URL.Query().Get("device_id"))
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			// Snapshot call from Play.Dispatch (no ContextURI path).
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(snapshotState)
+		case r.Method == http.MethodPut && r.URL.Path == "/play":
+			playCalled = true
+			if r.URL.Query().Get("device_id") != "" {
+				t.Errorf("expected no device_id, got %q", r.URL.Query().Get("device_id"))
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
@@ -75,7 +86,7 @@ func TestPlayCmdRunE_NoDevice(t *testing.T) {
 	if err := playCmd.RunE(playCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !called {
+	if !playCalled {
 		t.Fatal("expected play API to be called")
 	}
 }
@@ -92,11 +103,24 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 	resetPlayCmdFlags(t)
 
+	playCalled := false
+	snapshotState, _ := json.Marshal(spotify.PlaybackState{IsPlaying: false})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("device_id") != "device-1" {
-			t.Errorf("expected device_id=device-1, got %q", r.URL.Query().Get("device_id"))
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			// Snapshot call from Play.Dispatch (DeviceID set, no ContextURI).
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(snapshotState)
+		case r.Method == http.MethodPut && r.URL.Path == "/play":
+			playCalled = true
+			if r.URL.Query().Get("device_id") != "device-1" {
+				t.Errorf("expected device_id=device-1, got %q", r.URL.Query().Get("device_id"))
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
@@ -104,6 +128,9 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 
 	if err := playCmd.RunE(playCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !playCalled {
+		t.Fatal("expected play API to be called")
 	}
 }
 
