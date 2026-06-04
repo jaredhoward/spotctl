@@ -99,6 +99,9 @@ sets:
 | `device_id` | — | Applies to every command in the set. A command can override it with its own `device_id`. Omitting at both levels targets the currently active Spotify device. |
 | `on_error` | `fail` | Default error policy for all commands in the set. |
 | `on_timeout` | `fail` | Default timeout policy for all commands in the set. |
+| `confirm` | `true` | Default confirmation setting for all commands in the set. Commands may override it. |
+| `timeout` | `15s` | Default timeout for all commands in the set. Commands may override it. |
+| `params` | — | Named parameters the set accepts. Each entry has `required: true/false` and an optional `default`. Callers supply values via `--arg` flags or `run_set` args. |
 
 #### Commands
 
@@ -109,8 +112,8 @@ Each command in a set has:
 | `action` | *(required)* | See actions table below |
 | `device_id` | — | Spotify device ID for this command. Overrides the set-level `device_id`. Omit to target the active device. |
 | `params` | — | Action-specific parameters (see below) |
-| `confirm` | `true` | Poll Spotify state until the action is reflected before continuing. Set to `false` to fire-and-forget. |
-| `timeout` | `15s` | Overall deadline for the command including confirmation polling |
+| `confirm` | set-level or `true` | Poll Spotify state until the action is reflected before continuing. Set to `false` to fire-and-forget. |
+| `timeout` | set-level or `15s` | Overall deadline for the command including confirmation polling |
 | `on_error` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
 | `on_timeout` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
 
@@ -126,7 +129,33 @@ Each command in a set has:
 | `repeat` | `state` | — | `repeat_state = state` |
 | `volume` | `level` | — | `device.volume_percent = level` |
 | `transfer` | — | `play` (default `false`) | `device.id = device_id`, plus `is_playing = true` when `play=true` |
-| `run_set` | `set` | — | inner set completes |
+| `run_set` | `set` | `args` | inner set completes |
+
+For `run_set`, pass args to the target set using the `args` map under `params`:
+
+```yaml
+- action: run_set
+  params:
+    set: my_set
+    args:
+      uri: spotify:playlist:abc123
+      volume: "50"
+```
+
+The target set must declare the corresponding params with `required: true` or a `default`.
+
+To use a param value inside a command, reference it with Go template syntax:
+
+```yaml
+- action: play
+  params:
+    uri: '{{ index . "uri" }}'
+```
+
+`spotctl sets` renders these template expressions as `<name>` (e.g. `uri=<uri>`) so the listing stays readable.
+
+| Action | Required params | Optional params | Confirms by checking |
+|---|---|---|---|
 | `sleep` | `duration` | — | — |
 
 Notes:
@@ -207,6 +236,7 @@ No additional flags. Reads config and prints each set name, command count, and d
 | Flag | Description |
 |---|---|
 | `<set>` | Name of the set to run (required) |
+| `--arg key=value` | Supply a value for a declared set parameter. Repeatable. |
 
 ### `play`
 
@@ -308,24 +338,12 @@ When `confirm: true` is set on a play command in a set, `spotctl` blocks until S
 alias: Sleep Playlist
 mode: restart
 sequence:
-  - action: media_player.volume_set
-    target:
-      entity_id: media_player.master_bedroom_speaker
-    data:
-      volume_level: 0
-  - action: media_player.media_stop
-    target:
-      entity_id: media_player.master_bedroom_speaker
-    continue_on_error: true
+  ...
   - action: shell_command.spotctl_random_sleep
     # spotctl blocks here until Spotify confirms playback has started
     # (because confirm: true is set on the play command in the set).
     continue_on_error: false
-  - action: media_player.volume_set
-    target:
-      entity_id: media_player.master_bedroom_speaker
-    data:
-      volume_level: 0.35
+  ...
 ```
 
 If you need HA to perform an action only after its own media player integration reports the device as playing (e.g. for volume control via a native HA integration rather than `spotctl`), you can add a short `wait_template` after the `shell_command` step:
@@ -336,7 +354,7 @@ If you need HA to perform an action only after its own media player integration 
     continue_on_timeout: true
 ```
 
-The timeout can be short — `spotctl` has already confirmed Spotify-side playback, so HA's integration usually catches up within a second or two.
+The timeout can be short — `spotctl` may have already confirmed Spotify-side playback, so HA's integration usually catches up within a second or two.
 
 ### Volume Control: `spotctl` vs. Home Assistant direct
 

@@ -18,6 +18,8 @@ sets:
     device_id: set-device
     on_error: continue
     on_timeout: fail
+    confirm: false
+    timeout: 20s
     commands:
       - name: start playlist
         action: play
@@ -90,6 +92,12 @@ func TestSetRoundTrip(t *testing.T) {
 	if mv.OnTimeout != OnFailureFail {
 		t.Errorf("on_timeout: got %q, want %q", mv.OnTimeout, OnFailureFail)
 	}
+	if mv.Confirm == nil || *mv.Confirm {
+		t.Error("set confirm: expected explicit false")
+	}
+	if mv.Timeout != "20s" {
+		t.Errorf("set timeout: got %q, want 20s", mv.Timeout)
+	}
 	if len(mv.Commands) != 6 {
 		t.Fatalf("expected 6 commands, got %d", len(mv.Commands))
 	}
@@ -145,26 +153,210 @@ func TestSetRoundTrip(t *testing.T) {
 	}
 }
 
-// ----- ConfirmEnabled ------------------------------------------------------
+// ----- EffectiveConfirm -----------------------------------------------------
 
-func TestConfirmEnabled(t *testing.T) {
-	// nil (not set) defaults to true.
-	c := Command{}
-	if !c.ConfirmEnabled() {
-		t.Error("expected ConfirmEnabled=true when Confirm is nil")
+func TestEffectiveConfirm(t *testing.T) {
+	true_ := true
+	false_ := false
+
+	cases := []struct {
+		cmdConfirm *bool
+		setConfirm *bool
+		want       bool
+	}{
+		// both nil: global default true
+		{nil, nil, true},
+		// set-level false, command unset: inherits false
+		{nil, &false_, false},
+		// set-level true, command unset: inherits true
+		{nil, &true_, true},
+		// command overrides set-level false → true
+		{&true_, &false_, true},
+		// command overrides set-level true → false
+		{&false_, &true_, false},
+		// command explicit, set nil
+		{&false_, nil, false},
+		{&true_, nil, true},
 	}
-	// Explicit true.
-	v := true
-	c.Confirm = &v
-	if !c.ConfirmEnabled() {
-		t.Error("expected ConfirmEnabled=true when Confirm=true")
+	for _, tc := range cases {
+		c := Command{Confirm: tc.cmdConfirm}
+		if got := c.EffectiveConfirm(tc.setConfirm); got != tc.want {
+			t.Errorf("EffectiveConfirm(cmd=%v, set=%v) = %v, want %v",
+				tc.cmdConfirm, tc.setConfirm, got, tc.want)
+		}
 	}
-	// Explicit false.
-	f := false
-	c.Confirm = &f
-	if c.ConfirmEnabled() {
-		t.Error("expected ConfirmEnabled=false when Confirm=false")
+}
+
+// ----- EffectiveTimeout ------------------------------------------------------
+
+func TestEffectiveTimeout(t *testing.T) {
+	def := 15 * time.Second
+	cases := []struct {
+		cmdTimeout string
+		setTimeout string
+		want       time.Duration
+	}{
+		// both empty: global default
+		{"", "", def},
+		// set-level only
+		{"", "20s", 20 * time.Second},
+		// command overrides set
+		{"5s", "20s", 5 * time.Second},
+		// command overrides empty set
+		{"10s", "", 10 * time.Second},
+		// invalid set-level falls back to default
+		{"", "bad", def},
+		// invalid set-level zero falls back to default
+		{"", "0s", def},
+		// command invalid falls back to default (TimeoutDuration behaviour)
+		{"bad", "20s", def},
 	}
+	for _, tc := range cases {
+		c := Command{Timeout: tc.cmdTimeout}
+		if got := c.EffectiveTimeout(tc.setTimeout, def); got != tc.want {
+			t.Errorf("EffectiveTimeout(cmd=%q, set=%q) = %v, want %v",
+				tc.cmdTimeout, tc.setTimeout, got, tc.want)
+		}
+	}
+}
+
+// ----- ResolveParams --------------------------------------------------------
+
+func TestResolveParams(t *testing.T) {
+	t.Run("required present", func(t *testing.T) {
+		s := Set{Params: map[string]SetParam{"uri": {Required: true}}}
+		got, err := s.ResolveParams(map[string]string{"uri": "spotify:playlist:abc"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got["uri"] != "spotify:playlist:abc" {
+			t.Errorf("uri: got %q", got["uri"])
+		}
+	})
+
+	t.Run("required missing", func(t *testing.T) {
+		s := Set{Params: map[string]SetParam{"uri": {Required: true}}}
+		_, err := s.ResolveParams(nil)
+		if err == nil {
+			t.Fatal("expected error for missing required arg")
+		}
+		if !strings.Contains(err.Error(), "uri") {
+			t.Errorf("expected param name in error, got: %v", err)
+		}
+	})
+
+	t.Run("default used when arg absent", func(t *testing.T) {
+		s := Set{Params: map[string]SetParam{"volume": {Default: "35"}}}
+		got, err := s.ResolveParams(nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got["volume"] != "35" {
+			t.Errorf("volume: got %q, want 35", got["volume"])
+		}
+	})
+
+	t.Run("arg overrides default", func(t *testing.T) {
+		s := Set{Params: map[string]SetParam{"volume": {Default: "35"}}}
+		got, err := s.ResolveParams(map[string]string{"volume": "50"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got["volume"] != "50" {
+			t.Errorf("volume: got %q, want 50", got["volume"])
+		}
+	})
+
+	t.Run("unknown arg ignored", func(t *testing.T) {
+		s := Set{Params: map[string]SetParam{"uri": {Required: true}}}
+		got, err := s.ResolveParams(map[string]string{"uri": "x", "unknown": "y"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, exists := got["unknown"]; exists {
+			t.Error("expected unknown key to be ignored")
+		}
+	})
+
+	t.Run("no params declared", func(t *testing.T) {
+		s := Set{}
+		got, err := s.ResolveParams(map[string]string{"anything": "value"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("expected empty resolved map, got %v", got)
+		}
+	})
+}
+
+// ----- InterpolateParams -----------------------------------------------------
+
+func TestInterpolateParams(t *testing.T) {
+	t.Run("uri interpolated", func(t *testing.T) {
+		p := CommandParams{URI: "{{ index . \"uri\" }}"}
+		got, err := p.InterpolateParams(map[string]string{"uri": "spotify:playlist:abc"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.URI != "spotify:playlist:abc" {
+			t.Errorf("URI: got %q", got.URI)
+		}
+	})
+
+	t.Run("multiple fields interpolated", func(t *testing.T) {
+		p := CommandParams{
+			URI:      "{{ index . \"uri\" }}",
+			Duration: "{{ index . \"dur\" }}",
+		}
+		got, err := p.InterpolateParams(map[string]string{"uri": "spotify:track:x", "dur": "5s"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.URI != "spotify:track:x" {
+			t.Errorf("URI: got %q", got.URI)
+		}
+		if got.Duration != "5s" {
+			t.Errorf("Duration: got %q", got.Duration)
+		}
+	})
+
+	t.Run("unknown key renders empty", func(t *testing.T) {
+		p := CommandParams{URI: "{{ index . \"missing\" }}"}
+		got, err := p.InterpolateParams(map[string]string{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.URI != "" {
+			t.Errorf("expected empty URI for missing key, got %q", got.URI)
+		}
+	})
+
+	t.Run("no placeholders pass through unchanged", func(t *testing.T) {
+		p := CommandParams{URI: "spotify:playlist:abc", RepeatState: "context"}
+		got, err := p.InterpolateParams(map[string]string{"uri": "other"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.URI != "spotify:playlist:abc" {
+			t.Errorf("URI: got %q", got.URI)
+		}
+		if got.RepeatState != "context" {
+			t.Errorf("RepeatState: got %q", got.RepeatState)
+		}
+	})
+
+	t.Run("non-string fields unaffected", func(t *testing.T) {
+		level := 42
+		p := CommandParams{Level: &level, URI: "{{ index . \"uri\" }}"}
+		got, err := p.InterpolateParams(map[string]string{"uri": "spotify:album:z"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Level == nil || *got.Level != 42 {
+			t.Errorf("Level: expected 42, got %v", got.Level)
+		}
+	})
 }
 
 // ----- ResolvedDeviceID ------------------------------------------------------

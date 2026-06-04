@@ -81,7 +81,7 @@ func TestBuild_Play_Playlist(t *testing.T) {
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{PlaylistID: "pl123"}, Confirm: boolPtr(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestBuild_Play_Track(t *testing.T) {
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{TrackID: "tr456"}, Confirm: boolPtr(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestBuild_Play_Album(t *testing.T) {
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{AlbumID: "al789"}, Confirm: boolPtr(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestBuild_Play_Artist(t *testing.T) {
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{ArtistID: "ar999"}, Confirm: boolPtr(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestBuild_Play_MultipleURIError(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "play", Params: config.CommandParams{PlaylistID: "pl1", TrackID: "tr1"}},
 	}}
-	_, err := sets.Build("test", set, newCfg(nil), 0)
+	_, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err == nil || !strings.Contains(err.Error(), "only one of") {
 		t.Fatalf("expected multiple-URI error, got %v", err)
 	}
@@ -189,7 +189,7 @@ func TestBuild_SetLevelDeviceApplied(t *testing.T) {
 	useTestServer(t, srv)
 
 	set := config.Set{DeviceID: "set-device", Commands: []config.Command{{Action: "pause", Confirm: boolPtr(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestBuild_CommandDeviceOverridesSet(t *testing.T) {
 		DeviceID: "set-device",
 		Commands: []config.Command{{Action: "pause", DeviceID: "cmd-device", Confirm: boolPtr(false)}},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,14 +233,14 @@ func TestBuild_CommandDeviceOverridesSet(t *testing.T) {
 func TestRunSet_PlayNoConfirm(t *testing.T) {
 	playCalled := false
 	srv := mockServer(t, map[string]http.HandlerFunc{
-		"GET /":     func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, // snapshot
+		"GET /":     func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
 		"PUT /play": func(w http.ResponseWriter, r *http.Request) { playCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
 	defer srv.Close()
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{{Action: "play", DeviceID: "d1", Confirm: boolPtr(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,8 +253,6 @@ func TestRunSet_PlayNoConfirm(t *testing.T) {
 }
 
 func TestRunSet_PlayAndConfirm(t *testing.T) {
-	// Poll state must include Device.ID matching the command's DeviceID so that
-	// Play.Confirmed (which now checks device ID when no ContextURI is set) resolves.
 	pollCount := 0
 	srv := mockServer(t, map[string]http.HandlerFunc{
 		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
@@ -272,7 +270,7 @@ func TestRunSet_PlayAndConfirm(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "play", DeviceID: "d1", Confirm: boolPtr(true), Timeout: "5s"},
 	}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +301,7 @@ func TestRunSet_ConfirmTimeout_Continue(t *testing.T) {
 			{Action: "pause", DeviceID: "d1"},
 		},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +326,7 @@ func TestRunSet_ConfirmTimeout_Fail(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "play", DeviceID: "d1", Confirm: boolPtr(true), Timeout: "50ms", OnTimeout: config.OnFailureFail},
 	}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +352,7 @@ func TestRunSet_ConfirmTimeout_SkipRemaining(t *testing.T) {
 		{Action: "play", DeviceID: "d1", Confirm: boolPtr(true), Timeout: "50ms", OnTimeout: config.OnFailureSkipRemaining},
 		{Action: "pause", DeviceID: "d1"},
 	}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +367,7 @@ func TestRunSet_ConfirmTimeout_SkipRemaining(t *testing.T) {
 func TestRunSet_CommandError_Continue(t *testing.T) {
 	pauseCalled := false
 	srv := mockServer(t, map[string]http.HandlerFunc{
-		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, // snapshot
+		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
 		"POST /next": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { pauseCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
@@ -383,7 +381,7 @@ func TestRunSet_CommandError_Continue(t *testing.T) {
 			{Action: "pause", DeviceID: "d1", Confirm: boolPtr(false)},
 		},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +395,7 @@ func TestRunSet_CommandError_Continue(t *testing.T) {
 
 func TestRunSet_CommandError_Fail(t *testing.T) {
 	srv := mockServer(t, map[string]http.HandlerFunc{
-		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, // snapshot
+		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
 		"POST /next": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
 	})
 	defer srv.Close()
@@ -407,7 +405,7 @@ func TestRunSet_CommandError_Fail(t *testing.T) {
 		OnError:  config.OnFailureFail,
 		Commands: []config.Command{{Action: "next", DeviceID: "d1"}},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +418,7 @@ func TestRunSet_CommandError_Fail(t *testing.T) {
 func TestRunSet_CommandError_SkipRemaining(t *testing.T) {
 	pauseCalled := false
 	srv := mockServer(t, map[string]http.HandlerFunc{
-		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, // snapshot
+		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
 		"POST /next": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { pauseCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
@@ -434,7 +432,7 @@ func TestRunSet_CommandError_SkipRemaining(t *testing.T) {
 			{Action: "pause", DeviceID: "d1"},
 		},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +446,7 @@ func TestRunSet_CommandError_SkipRemaining(t *testing.T) {
 
 func TestRunSet_CommandOverridesSetDefault(t *testing.T) {
 	srv := mockServer(t, map[string]http.HandlerFunc{
-		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, // snapshot
+		"GET /":      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
 		"POST /next": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
 	})
 	defer srv.Close()
@@ -458,7 +456,7 @@ func TestRunSet_CommandOverridesSetDefault(t *testing.T) {
 		OnError:  config.OnFailureContinue,
 		Commands: []config.Command{{Action: "next", DeviceID: "d1", OnError: config.OnFailureFail}},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +471,7 @@ func TestRunSet_Sleep(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "sleep", Params: config.CommandParams{Duration: "20ms"}},
 	}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +503,7 @@ func TestRunSet_Composable(t *testing.T) {
 		{Action: "run_set", Params: config.CommandParams{Set: "inner"}},
 		{Action: "run_set", Params: config.CommandParams{Set: "inner"}},
 	}}
-	rs, err := sets.Build("outer", outer, newCfg(map[string]config.Set{"inner": inner}), 0)
+	rs, err := sets.Build("outer", outer, newCfg(map[string]config.Set{"inner": inner}), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +522,7 @@ func TestBuild_MaxDepth(t *testing.T) {
 		}},
 	}
 	cfg := newCfg(s)
-	_, err := sets.Build("self", cfg.Sets["self"], cfg, sets.MaxSetDepth)
+	_, err := sets.Build("self", cfg.Sets["self"], cfg, sets.MaxSetDepth, nil)
 	var depthErr *sets.DepthExceededError
 	if !errors.As(err, &depthErr) {
 		t.Fatalf("expected DepthExceededError, got %v", err)
@@ -535,7 +533,7 @@ func TestBuild_UnknownNestedSet(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "run_set", Params: config.CommandParams{Set: "does-not-exist"}},
 	}}
-	_, err := sets.Build("outer", set, newCfg(nil), 0)
+	_, err := sets.Build("outer", set, newCfg(nil), 0, nil)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("expected not-found error, got %v", err)
 	}
@@ -543,7 +541,7 @@ func TestBuild_UnknownNestedSet(t *testing.T) {
 
 func TestBuild_UnknownAction(t *testing.T) {
 	set := config.Set{Commands: []config.Command{{Action: "bogus"}}}
-	_, err := sets.Build("test", set, newCfg(nil), 0)
+	_, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err == nil || !strings.Contains(err.Error(), "unknown action") {
 		t.Fatalf("expected unknown action error, got %v", err)
 	}
@@ -552,7 +550,6 @@ func TestBuild_UnknownAction(t *testing.T) {
 // ---- Spotify action types: Confirmed ----------------------------------------
 
 func TestPlay_Confirmed(t *testing.T) {
-	// Play without DeviceID or ContextURI: only IsPlaying matters.
 	a := &spotify.Play{}
 	if !a.Confirmed(&spotify.PlaybackState{IsPlaying: true}) {
 		t.Error("expected confirmed when is_playing=true and no constraints")
@@ -564,7 +561,6 @@ func TestPlay_Confirmed(t *testing.T) {
 		t.Error("expected not confirmed for nil state")
 	}
 
-	// Play with DeviceID: must match active device.
 	ad := &spotify.Play{DeviceID: "d1"}
 	if !ad.Confirmed(&spotify.PlaybackState{IsPlaying: true, Device: spotify.Device{ID: "d1"}}) {
 		t.Error("expected confirmed when device matches")
@@ -636,8 +632,6 @@ func TestTransfer_Confirmed(t *testing.T) {
 // ---- Execute: confirm polling with transient errors -------------------------
 
 func TestExecute_ConfirmPollError(t *testing.T) {
-	// Poll state must include Device.ID matching the command's DeviceID so that
-	// Play.Confirmed resolves once the transient errors clear.
 	pollCount := 0
 	srv := mockServer(t, map[string]http.HandlerFunc{
 		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },

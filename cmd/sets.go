@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/sets"
@@ -56,6 +57,8 @@ func runSets(cmd *cobra.Command, args []string) error {
 
 // ---- run --------------------------------------------------------------------
 
+var runArgFlags []string
+
 var runCmd = &cobra.Command{
 	Use:   "run <set>",
 	Short: "Run a named set of Spotify commands",
@@ -73,7 +76,12 @@ var runCmd = &cobra.Command{
 			return fmt.Errorf("set %q not found in config", name)
 		}
 
-		rs, err := sets.Build(name, set, cfg, 0)
+		setArgs, err := parseArgFlags(runArgFlags)
+		if err != nil {
+			return err
+		}
+
+		rs, err := sets.Build(name, set, cfg, 0, setArgs)
 		if err != nil {
 			return err
 		}
@@ -87,8 +95,26 @@ var runCmd = &cobra.Command{
 	},
 }
 
+// parseArgFlags converts ["key=value", ...] into a map. Returns an error for
+// any entry that does not contain exactly one "=" separator.
+func parseArgFlags(flags []string) (map[string]string, error) {
+	if len(flags) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(flags))
+	for _, f := range flags {
+		key, val, ok := strings.Cut(f, "=")
+		if !ok || key == "" {
+			return nil, fmt.Errorf("--arg %q: expected key=value format", f)
+		}
+		out[key] = val
+	}
+	return out, nil
+}
+
 // ---- init -------------------------------------------------------------------
 
 func init() {
+	runCmd.Flags().StringArrayVar(&runArgFlags, "arg", nil, "set parameter as key=value (repeatable)")
 	rootCmd.AddCommand(setsCmd, runCmd)
 }

@@ -9,14 +9,26 @@ import (
 )
 
 // Build translates a config.Set into a *RunSet ready to Dispatch. depth is
-// the current nesting level used to enforce MaxSetDepth.
-func Build(name string, set config.Set, cfg *config.Config, depth int) (*RunSet, error) {
+// the current nesting level used to enforce MaxSetDepth. args supplies
+// caller-provided parameter values which are merged with set-level defaults.
+func Build(name string, set config.Set, cfg *config.Config, depth int, args map[string]string) (*RunSet, error) {
 	if depth > MaxSetDepth {
 		return nil, &DepthExceededError{Max: MaxSetDepth}
 	}
 
+	resolved, err := set.ResolveParams(args)
+	if err != nil {
+		return nil, fmt.Errorf("set %q: %w", name, err)
+	}
+
 	steps := make([]step, 0, len(set.Commands))
 	for i, cmd := range set.Commands {
+		interpolated, err := cmd.Params.InterpolateParams(resolved)
+		if err != nil {
+			return nil, fmt.Errorf("set %q command %d (%s): param interpolation: %w", name, i+1, cmd.Action, err)
+		}
+		cmd.Params = interpolated
+
 		if err := cmd.Params.Validate(cmd.Action); err != nil {
 			return nil, fmt.Errorf("set %q command %d (%s): %w", name, i+1, cmd.Action, err)
 		}
@@ -34,13 +46,13 @@ func Build(name string, set config.Set, cfg *config.Config, depth int) (*RunSet,
 		}
 
 		pollInterval := cfg.PlaybackPollIntervalDuration()
-		timeout := cmd.TimeoutDuration(config.DefaultConfirmTimeout)
+		timeout := cmd.EffectiveTimeout(set.Timeout, config.DefaultConfirmTimeout)
 
 		steps = append(steps, step{
 			label:  label,
 			action: a,
 			opts: ExecuteOptions{
-				Confirm:      cmd.ConfirmEnabled(),
+				Confirm:      cmd.EffectiveConfirm(set.Confirm),
 				Timeout:      timeout,
 				PollInterval: pollInterval,
 			},
@@ -92,7 +104,7 @@ func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth 
 		if !ok {
 			return nil, fmt.Errorf("set %q not found", cmd.Params.Set)
 		}
-		return Build(cmd.Params.Set, sub, cfg, depth+1)
+		return Build(cmd.Params.Set, sub, cfg, depth+1, cmd.Params.Args)
 
 	default:
 		return nil, fmt.Errorf("unknown action %q", cmd.Action)
