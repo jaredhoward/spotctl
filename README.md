@@ -119,26 +119,25 @@ Each command in a set has:
 
 #### Params reference
 
-| Action | Required params | Optional params | Confirms by checking |
+| Action | Params | Allowed values | Confirms by checking |
 |---|---|---|---|
-| `play` | — | `uri`, `playlist`, `track`, `album`, `artist` | `is_playing = true`, track URI changed if provided |
+| `play` | one of `uri`, `playlist`, `track`, `album`, `artist` | one of these, or omit to resume on active device | `is_playing = true`, track URI changed if provided |
 | `pause` | — | — | `is_playing = false` |
 | `next` | — | — | track URI changed |
 | `previous` | — | — | track URI changed |
-| `shuffle` | — | `enabled` (default `true`) | `shuffle_state = enabled` |
-| `repeat` | `state` | — | `repeat_state = state` |
-| `volume` | `level` | — | `device.volume_percent = level` |
-| `transfer` | — | `play` (default `false`) | `device.id = device_id`, plus `is_playing = true` when `play=true` |
-| `run_set` | `set` | any declared params of the target set | inner set completes |
-| `sleep` | `duration` | — | — |
+| `shuffle` | `enabled` | `true` *(default)*, `false` | `shuffle_state = enabled` |
+| `repeat` | `state` *(required)* | `off`, `track`, `context` | `repeat_state = state` |
+| `volume` | `level` *(required)* | integer `0-100` | `device.volume_percent = level` |
+| `transfer` | `play` | `true`, `false` *(default)* | `device.id = device_id`, plus `is_playing = true` when `play=true` |
+| `sleep` | `duration` *(required)* | duration string like `30s` or `1m` | — |
+| `run_set` | `set` *(required)*, plus declared target params | target set params depend on the inner set | inner set completes |
 
-Notes:
+##### Action parameter details
 
-- `device_id` is specified at the command level and applies to all actions that use a device. Omitting it completely from set and command levels target the currently active Spotify device.
-- For `play`, use one of `uri`, `playlist`, `track`, `album`, or `artist` — not more than one. `playlist`, `track`, `album` and `artist` are shorthand for the corresponding `spotify:TYPE:ID` URI.
-- For `transfer`, `play=true` means the action is confirmed only once the target device is active and playback is started.
-- `state` must be one of `off`, `track`, or `context`.
-- `sleep` pauses execution for the specified duration (e.g. `30s`, `1m`). No Spotify API call is made. `confirm` has no effect.
+- `play`: use exactly one of `uri`, `playlist`, `track`, `album`, or `artist`. The latter four are shorthand for `spotify:TYPE:ID` URIs.
+- `transfer.play`: when `true`, confirmation waits for the target device to become active and playback to start.
+- `sleep.duration`: no Spotify API call is made and `confirm` has no effect.
+- `run_set.set`: target set name. Any other sibling params are passed to the inner set if declared there.
 
 ##### For `run_set`
 
@@ -164,7 +163,26 @@ To use a param value inside a command, use `{{ name }}` syntax:
 
 `spotctl sets` renders these as `<name>` (e.g. `uri=<uri>`), indicating the value is supplied at call time. A concrete value (e.g. `level=35`) means a literal or default is set directly in the config.
 
-### 4. Test
+## Commands
+
+| Command | Description |
+|---|---|
+| `spotctl sets` | List all configured sets |
+| `spotctl run <set>` | Run a named set of commands |
+| `spotctl play` | Start or resume Spotify playback |
+| `spotctl pause` | Pause Spotify playback |
+| `spotctl next` | Skip to the next track |
+| `spotctl previous` | Return to the previous track |
+| `spotctl shuffle` | Enable or disable shuffle |
+| `spotctl repeat` | Set repeat mode |
+| `spotctl volume` | Set Spotify playback volume |
+| `spotctl transfer` | Transfer playback to a Spotify Connect device |
+| `spotctl devices` | List available Spotify Connect devices |
+| `spotctl status` | Show current Spotify playback status |
+| `spotctl setup` | Interactive setup and OAuth flow |
+| `spotctl version` | Print the version |
+
+### Examples
 
 List configured sets:
 ```bash
@@ -198,25 +216,6 @@ spotctl volume --device DEVICE_ID --level 50 --config ./config.yaml
 spotctl transfer --device DEVICE_ID --play --config ./config.yaml
 ```
 
-## Commands
-
-| Command | Description |
-|---|---|
-| `spotctl sets` | List all configured sets |
-| `spotctl run <set>` | Run a named set of commands |
-| `spotctl play` | Start or resume Spotify playback |
-| `spotctl pause` | Pause Spotify playback |
-| `spotctl next` | Skip to the next track |
-| `spotctl previous` | Return to the previous track |
-| `spotctl shuffle` | Enable or disable shuffle |
-| `spotctl repeat` | Set repeat mode |
-| `spotctl volume` | Set Spotify playback volume |
-| `spotctl transfer` | Transfer playback to a Spotify Connect device |
-| `spotctl devices` | List available Spotify Connect devices |
-| `spotctl status` | Show current Spotify playback status |
-| `spotctl setup` | Interactive setup and OAuth flow |
-| `spotctl version` | Print the version |
-
 ## Flags
 
 ### Global
@@ -234,7 +233,7 @@ No additional flags. Reads config and prints each set name, command count, and d
 | Flag | Description |
 |---|---|
 | `<set>` | Name of the set to run (required) |
-| `--<param>` | Value for a declared set param, e.g. `--uri=spotify:playlist:abc123`. Run `spotctl sets` to see declared params for each set. |
+| <code>-&#x2060;-&#x2060;&lt;param&gt;</code> | Value for a declared set param, e.g. `--uri=spotify:playlist:abc123`. Run `spotctl sets` to see declared params for each set. |
 
 ### `play`
 
