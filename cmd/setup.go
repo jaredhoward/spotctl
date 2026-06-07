@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -38,7 +39,7 @@ var setupCmd = &cobra.Command{
 		fmt.Println("Starting OAuth flow...")
 		fmt.Println()
 
-		refreshToken, err := oauthFlow(clientID, clientSecret, redirectURI)
+		refreshToken, err := oauthFlow(clientID, clientSecret, redirectURI, os.Stdin)
 		if err != nil {
 			return fmt.Errorf("OAuth flow failed: %w", err)
 		}
@@ -72,7 +73,18 @@ var setupCmd = &cobra.Command{
 	},
 }
 
-func oauthFlow(clientID, clientSecret, redirectURI string, tokenEndpoint ...string) (string, error) {
+// oauthHTTPClient is the HTTP client used for token exchange. Tests may
+// replace it with a server-specific client to avoid mutating http.DefaultClient.
+var oauthHTTPClient *http.Client
+
+func getOAuthClient() *http.Client {
+	if oauthHTTPClient != nil {
+		return oauthHTTPClient
+	}
+	return http.DefaultClient
+}
+
+func oauthFlow(clientID, clientSecret, redirectURI string, stdin io.Reader, opts ...string) (string, error) {
 	params := url.Values{}
 	params.Set("client_id", clientID)
 	params.Set("response_type", "code")
@@ -83,7 +95,7 @@ func oauthFlow(clientID, clientSecret, redirectURI string, tokenEndpoint ...stri
 	fmt.Printf("Open this URL in your browser:\n\n%s\n\n", authURL)
 	fmt.Printf("After authorizing, you'll be redirected to:\n%s?code=XXXXXX\n\n", redirectURI)
 
-	reader := bufio.NewReader(os.Stdin)
+	reader := bufio.NewReader(stdin)
 	redirectedURL := prompt(reader, "Paste the full redirect URL here")
 
 	parsed, err := url.Parse(redirectedURL)
@@ -104,9 +116,10 @@ func oauthFlow(clientID, clientSecret, redirectURI string, tokenEndpoint ...stri
 	data.Set("redirect_uri", redirectURI)
 
 	endpoint := spotify.URLToken
-	if len(tokenEndpoint) > 0 {
-		endpoint = tokenEndpoint[0]
+	if len(opts) > 0 && opts[0] != "" {
+		endpoint = opts[0]
 	}
+
 	req, err := http.NewRequest(http.MethodPost, endpoint,
 		strings.NewReader(data.Encode()),
 	)
@@ -117,7 +130,7 @@ func oauthFlow(clientID, clientSecret, redirectURI string, tokenEndpoint ...stri
 		base64.StdEncoding.EncodeToString([]byte(clientID+":"+clientSecret)))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := getOAuthClient().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("token exchange failed: %w", err)
 	}

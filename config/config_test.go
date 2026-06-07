@@ -107,7 +107,7 @@ func TestLoadAndSaveRoundTrip(t *testing.T) {
 	defer os.Remove(f.Name())
 	f.Close()
 
-	level := 60
+	level := IntOrTemplate{Value: 60}
 	original := &Config{
 		ClientID:             "id",
 		ClientSecret:         "secret",

@@ -90,7 +90,11 @@ func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth 
 		return &spotify.Repeat{DeviceID: deviceID, State: cmd.Params.RepeatState}, nil
 
 	case "volume":
-		return &spotify.Volume{DeviceID: deviceID, Level: *cmd.Params.Level}, nil
+		level, err := cmd.Params.Level.Resolved()
+		if err != nil {
+			return nil, err
+		}
+		return &spotify.Volume{DeviceID: deviceID, Level: level}, nil
 
 	case "transfer":
 		return &spotify.Transfer{DeviceID: deviceID, Play: cmd.Params.TransferPlay()}, nil
@@ -104,7 +108,7 @@ func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth 
 		if !ok {
 			return nil, fmt.Errorf("set %q not found", cmd.Params.Set)
 		}
-		return Build(cmd.Params.Set, sub, cfg, depth+1, cmd.Params.Args)
+		return Build(cmd.Params.Set, sub, cfg, depth+1, cmd.Params.ForwardedArgs())
 
 	default:
 		return nil, fmt.Errorf("unknown action %q", cmd.Action)

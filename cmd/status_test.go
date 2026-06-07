@@ -60,16 +60,15 @@ func TestRunStatus_NoItem_NoContext(t *testing.T) {
 	}
 
 	oldConfigPath := configPath
-	defer func() { configPath = oldConfigPath }()
+	t.Cleanup(func() { configPath = oldConfigPath })
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(state)
 	}))
-	defer srv.Close()
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	cleanup := wireClient(t, srv)
-	defer cleanup()
+	wireClient(t, srv)
+	t.Cleanup(srv.Close)
 
 	output := captureOutput(t, func() {
 		if err := statusCmd.RunE(statusCmd, nil); err != nil {
@@ -105,16 +104,16 @@ func TestRunStatus_ItemNoContext(t *testing.T) {
 	}
 
 	oldConfigPath := configPath
-	defer func() { configPath = oldConfigPath }()
+	t.Cleanup(func() { configPath = oldConfigPath })
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(state)
 	}))
-	defer srv.Close()
+	// Register server close after wireClient so globals are restored first.
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	cleanup := wireClient(t, srv)
-	defer cleanup()
+	wireClient(t, srv)
+	t.Cleanup(srv.Close)
 
 	output := captureOutput(t, func() {
 		if err := statusCmd.RunE(statusCmd, nil); err != nil {

@@ -44,7 +44,8 @@ func mockSpotifyServer(t *testing.T, handlers map[string]http.HandlerFunc) *http
 }
 
 // wireClient points URLPlayer at srv, sets up newSpotifyClient to use srv's
-// HTTP client, and installs a no-op token refresh. Returns cleanup.
+// HTTP client, and installs a no-op token refresh. Cleanup is registered via
+// t.Cleanup so it runs even if the test panics, before the server closes.
 func wireClient(t *testing.T, srv *httptest.Server) (cleanup func()) {
 	t.Helper()
 	oldURLPlayer := spotify.URLPlayer
@@ -59,11 +60,13 @@ func wireClient(t *testing.T, srv *httptest.Server) (cleanup func()) {
 	}
 	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
 
-	return func() {
+	restore := func() {
 		spotify.URLPlayer = oldURLPlayer
 		newSpotifyClient = oldNewClient
 		spotify.RefreshAccessToken = oldRefresh
 	}
+	t.Cleanup(restore)
+	return restore
 }
 
 // ----- run command: integration ----------------------------------------------

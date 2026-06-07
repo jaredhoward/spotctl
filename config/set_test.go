@@ -122,7 +122,7 @@ func TestSetRoundTrip(t *testing.T) {
 	}
 
 	c2 := mv.Commands[2]
-	if c2.Action != "volume" || c2.Params.Level == nil || *c2.Params.Level != 60 {
+	if c2.Action != "volume" || c2.Params.Level == nil || c2.Params.Level.Value != 60 {
 		t.Errorf("command 2 volume unexpected: %+v", c2)
 	}
 
@@ -294,7 +294,7 @@ func TestResolveParams(t *testing.T) {
 
 func TestInterpolateParams(t *testing.T) {
 	t.Run("uri interpolated", func(t *testing.T) {
-		p := CommandParams{URI: "{{ index . \"uri\" }}"}
+		p := CommandParams{URI: "{{ uri }}"}
 		got, err := p.InterpolateParams(map[string]string{"uri": "spotify:playlist:abc"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -306,8 +306,8 @@ func TestInterpolateParams(t *testing.T) {
 
 	t.Run("multiple fields interpolated", func(t *testing.T) {
 		p := CommandParams{
-			URI:      "{{ index . \"uri\" }}",
-			Duration: "{{ index . \"dur\" }}",
+			URI:      "{{ uri }}",
+			Duration: "{{ dur }}",
 		}
 		got, err := p.InterpolateParams(map[string]string{"uri": "spotify:track:x", "dur": "5s"})
 		if err != nil {
@@ -322,7 +322,7 @@ func TestInterpolateParams(t *testing.T) {
 	})
 
 	t.Run("unknown key renders empty", func(t *testing.T) {
-		p := CommandParams{URI: "{{ index . \"missing\" }}"}
+		p := CommandParams{URI: "{{ missing }}"}
 		got, err := p.InterpolateParams(map[string]string{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -347,13 +347,13 @@ func TestInterpolateParams(t *testing.T) {
 	})
 
 	t.Run("non-string fields unaffected", func(t *testing.T) {
-		level := 42
-		p := CommandParams{Level: &level, URI: "{{ index . \"uri\" }}"}
+		level := IntOrTemplate{Value: 42}
+		p := CommandParams{Level: &level, URI: "{{ uri }}"}
 		got, err := p.InterpolateParams(map[string]string{"uri": "spotify:album:z"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got.Level == nil || *got.Level != 42 {
+		if got.Level == nil || got.Level.Value != 42 {
 			t.Errorf("Level: expected 42, got %v", got.Level)
 		}
 	})
@@ -466,7 +466,6 @@ func TestTransferPlay(t *testing.T) {
 // ----- Validate --------------------------------------------------------------
 
 func TestValidateAllActions(t *testing.T) {
-	level := 42
 	cases := []struct {
 		action  string
 		params  CommandParams
@@ -484,7 +483,7 @@ func TestValidateAllActions(t *testing.T) {
 		{"shuffle", CommandParams{}, false},
 		{"transfer", CommandParams{}, false},
 		// volume requires level.
-		{"volume", CommandParams{Level: &level}, false},
+		{"volume", CommandParams{Level: &IntOrTemplate{Value: 42}}, false},
 		{"volume", CommandParams{}, true},
 		// repeat requires state and it must be a valid value.
 		{"repeat", CommandParams{RepeatState: "off"}, false},
@@ -645,7 +644,234 @@ func TestValidateRepeatMissingState(t *testing.T) {
 	}
 }
 
-// ----- ValidRepeatStates -----------------------------------------------------
+// ----- IntOrTemplate --------------------------------------------------------
+
+func TestIntOrTemplate_UnmarshalYAML(t *testing.T) {
+	t.Run("int value", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    commands:
+      - action: volume
+        params:
+          level: 42
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		level := cfg.Sets["test"].Commands[0].Params.Level
+		if level == nil || level.Value != 42 || level.Expr != "" {
+			t.Errorf("expected Value=42, got %+v", level)
+		}
+	})
+
+	t.Run("template expression", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    commands:
+      - action: volume
+        params:
+          level: '{{ volume }}'
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		level := cfg.Sets["test"].Commands[0].Params.Level
+		if level == nil || level.Expr != "{{ volume }}" || level.Value != 0 {
+			t.Errorf("expected Expr={{ volume }}, got %+v", level)
+		}
+	})
+
+	t.Run("zero is valid", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    commands:
+      - action: volume
+        params:
+          level: 0
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		level := cfg.Sets["test"].Commands[0].Params.Level
+		if level == nil || level.Value != 0 {
+			t.Errorf("expected Value=0, got %+v", level)
+		}
+	})
+}
+
+func TestIntOrTemplate_MarshalYAML(t *testing.T) {
+	t.Run("marshals int", func(t *testing.T) {
+		v := IntOrTemplate{Value: 35}
+		out, err := v.MarshalYAML()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if out != 35 {
+			t.Errorf("expected 35, got %v", out)
+		}
+	})
+
+	t.Run("marshals expr as string", func(t *testing.T) {
+		v := IntOrTemplate{Expr: "{{ volume }}"}
+		out, err := v.MarshalYAML()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if out != "{{ volume }}" {
+			t.Errorf("expected expr string, got %v", out)
+		}
+	})
+}
+
+func TestIntOrTemplate_Resolved(t *testing.T) {
+	t.Run("resolved int", func(t *testing.T) {
+		v := IntOrTemplate{Value: 42}
+		got, err := v.Resolved()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != 42 {
+			t.Errorf("expected 42, got %d", got)
+		}
+	})
+
+	t.Run("unresolved expr errors", func(t *testing.T) {
+		v := IntOrTemplate{Expr: "{{ volume }}"}
+		_, err := v.Resolved()
+		if err == nil {
+			t.Fatal("expected error for unresolved expr")
+		}
+		if !strings.Contains(err.Error(), "volume") {
+			t.Errorf("expected expr in error, got: %v", err)
+		}
+	})
+}
+
+// ----- ForwardedArgs ---------------------------------------------------------
+
+func TestForwardedArgs(t *testing.T) {
+	t.Run("uri forwarded", func(t *testing.T) {
+		p := CommandParams{Set: "my_set", URI: "spotify:playlist:abc"}
+		got := p.ForwardedArgs()
+		if got["uri"] != "spotify:playlist:abc" {
+			t.Errorf("expected uri forwarded, got %v", got)
+		}
+	})
+
+	t.Run("playlist forwarded", func(t *testing.T) {
+		p := CommandParams{Set: "my_set", PlaylistID: "pl123"}
+		got := p.ForwardedArgs()
+		if got["playlist"] != "pl123" {
+			t.Errorf("expected playlist forwarded, got %v", got)
+		}
+	})
+
+	t.Run("track forwarded", func(t *testing.T) {
+		p := CommandParams{Set: "my_set", TrackID: "tr456"}
+		got := p.ForwardedArgs()
+		if got["track"] != "tr456" {
+			t.Errorf("expected track forwarded, got %v", got)
+		}
+	})
+
+	t.Run("album forwarded", func(t *testing.T) {
+		p := CommandParams{Set: "my_set", AlbumID: "al789"}
+		got := p.ForwardedArgs()
+		if got["album"] != "al789" {
+			t.Errorf("expected album forwarded, got %v", got)
+		}
+	})
+
+	t.Run("artist forwarded", func(t *testing.T) {
+		p := CommandParams{Set: "my_set", ArtistID: "ar999"}
+		got := p.ForwardedArgs()
+		if got["artist"] != "ar999" {
+			t.Errorf("expected artist forwarded, got %v", got)
+		}
+	})
+
+	t.Run("duration forwarded", func(t *testing.T) {
+		p := CommandParams{Set: "my_set", Duration: "5s"}
+		got := p.ForwardedArgs()
+		if got["duration"] != "5s" {
+			t.Errorf("expected duration forwarded, got %v", got)
+		}
+	})
+
+	t.Run("repeat state forwarded", func(t *testing.T) {
+		p := CommandParams{Set: "my_set", RepeatState: "context"}
+		got := p.ForwardedArgs()
+		if got["state"] != "context" {
+			t.Errorf("expected state forwarded, got %v", got)
+		}
+	})
+
+	t.Run("level int forwarded", func(t *testing.T) {
+		p := CommandParams{Set: "my_set", Level: &IntOrTemplate{Value: 50}}
+		got := p.ForwardedArgs()
+		if got["volume"] != "50" {
+			t.Errorf("expected volume=50 forwarded, got %v", got)
+		}
+	})
+
+	t.Run("level expr forwarded", func(t *testing.T) {
+		p := CommandParams{Set: "my_set", Level: &IntOrTemplate{Expr: "{{ volume }}"}}
+		got := p.ForwardedArgs()
+		if got["volume"] != "{{ volume }}" {
+			t.Errorf("expected expr forwarded, got %v", got)
+		}
+	})
+
+	t.Run("empty params returns nil", func(t *testing.T) {
+		p := CommandParams{Set: "my_set"}
+		if got := p.ForwardedArgs(); got != nil {
+			t.Errorf("expected nil for empty params, got %v", got)
+		}
+	})
+}
+
+// ----- InterpolateParams: level expr -----------------------------------------
+
+func TestInterpolateParams_LevelExpr(t *testing.T) {
+	t.Run("level expr resolved to int", func(t *testing.T) {
+		p := CommandParams{Level: &IntOrTemplate{Expr: "{{ volume }}"}}
+		got, err := p.InterpolateParams(map[string]string{"volume": "42"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Level == nil || got.Level.Value != 42 || got.Level.Expr != "" {
+			t.Errorf("expected resolved Level=42, got %+v", got.Level)
+		}
+	})
+
+	t.Run("level expr resolves to non-int errors", func(t *testing.T) {
+		p := CommandParams{Level: &IntOrTemplate{Expr: "{{ volume }}"}}
+		_, err := p.InterpolateParams(map[string]string{"volume": "loud"})
+		if err == nil {
+			t.Fatal("expected error for non-int level")
+		}
+		if !strings.Contains(err.Error(), "not an integer") {
+			t.Errorf("expected 'not an integer' in error, got: %v", err)
+		}
+	})
+}
+
+// ----- ValidRepeatStates ----------------------------------------------------
 
 func TestValidRepeatStates(t *testing.T) {
 	for _, state := range []string{"off", "track", "context"} {

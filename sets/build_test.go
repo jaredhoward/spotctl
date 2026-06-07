@@ -24,7 +24,7 @@ func TestBuildWithParams(t *testing.T) {
 		Commands: []config.Command{
 			{
 				Action: "play",
-				Params: config.CommandParams{URI: `{{ index . "uri" }}`},
+				Params: config.CommandParams{URI: `{{ uri }}`},
 			},
 		},
 	}
@@ -62,7 +62,7 @@ func TestBuildDefaultParam(t *testing.T) {
 		Commands: []config.Command{
 			{
 				Action: "play",
-				Params: config.CommandParams{URI: `{{ index . "uri" }}`},
+				Params: config.CommandParams{URI: `{{ uri }}`},
 			},
 		},
 	}
@@ -87,7 +87,7 @@ func TestBuildMissingRequiredParam(t *testing.T) {
 		Commands: []config.Command{
 			{
 				Action: "play",
-				Params: config.CommandParams{URI: `{{ index . "uri" }}`},
+				Params: config.CommandParams{URI: `{{ uri }}`},
 			},
 		},
 	}
@@ -113,19 +113,19 @@ func TestBuildRunSetPassesArgs(t *testing.T) {
 		Commands: []config.Command{
 			{
 				Action: "play",
-				Params: config.CommandParams{URI: `{{ index . "uri" }}`},
+				Params: config.CommandParams{URI: `{{ uri }}`},
 			},
 		},
 	}
 
-	// outer set calls inner via run_set with args
+	// outer set calls inner via run_set with forwarded params
 	outer := config.Set{
 		Commands: []config.Command{
 			{
 				Action: "run_set",
 				Params: config.CommandParams{
-					Set:  "inner",
-					Args: map[string]string{"uri": "spotify:playlist:passed"},
+					Set: "inner",
+					URI: "spotify:playlist:passed",
 				},
 			},
 		},

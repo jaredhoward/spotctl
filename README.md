@@ -101,7 +101,7 @@ sets:
 | `on_timeout` | `fail` | Default timeout policy for all commands in the set. |
 | `confirm` | `true` | Default confirmation setting for all commands in the set. Commands may override it. |
 | `timeout` | `15s` | Default timeout for all commands in the set. Commands may override it. |
-| `params` | — | Named parameters the set accepts. Each entry has `required: true/false` and an optional `default`. Callers supply values via `--arg` flags or `run_set` args. |
+| `params` | — | Named parameters the set accepts. Each entry has `required: true/false` and an optional `default`. Callers supply values via `--<name>` flags on the CLI, or as sibling keys under `run_set` params. |
 
 #### Commands
 
@@ -129,33 +129,7 @@ Each command in a set has:
 | `repeat` | `state` | — | `repeat_state = state` |
 | `volume` | `level` | — | `device.volume_percent = level` |
 | `transfer` | — | `play` (default `false`) | `device.id = device_id`, plus `is_playing = true` when `play=true` |
-| `run_set` | `set` | `args` | inner set completes |
-
-For `run_set`, pass args to the target set using the `args` map under `params`:
-
-```yaml
-- action: run_set
-  params:
-    set: my_set
-    args:
-      uri: spotify:playlist:abc123
-      volume: "50"
-```
-
-The target set must declare the corresponding params with `required: true` or a `default`.
-
-To use a param value inside a command, reference it with Go template syntax:
-
-```yaml
-- action: play
-  params:
-    uri: '{{ index . "uri" }}'
-```
-
-`spotctl sets` renders these template expressions as `<name>` (e.g. `uri=<uri>`) so the listing stays readable.
-
-| Action | Required params | Optional params | Confirms by checking |
-|---|---|---|---|
+| `run_set` | `set` | any declared params of the target set | inner set completes |
 | `sleep` | `duration` | — | — |
 
 Notes:
@@ -165,6 +139,30 @@ Notes:
 - For `transfer`, `play=true` means the action is confirmed only once the target device is active and playback is started.
 - `state` must be one of `off`, `track`, or `context`.
 - `sleep` pauses execution for the specified duration (e.g. `30s`, `1m`). No Spotify API call is made. `confirm` has no effect.
+
+##### For `run_set`
+
+Pass values to the target set's declared params as sibling keys alongside `set`:
+
+```yaml
+- action: run_set
+  params:
+    set: my_set
+    uri: spotify:playlist:abc123
+    volume: "50"
+```
+
+The target set must declare the corresponding params with `required: true` or a `default`.
+
+To use a param value inside a command, use `{{ name }}` syntax:
+
+```yaml
+- action: play
+  params:
+    uri: '{{ uri }}'
+```
+
+`spotctl sets` renders these as `<name>` (e.g. `uri=<uri>`), indicating the value is supplied at call time. A concrete value (e.g. `level=35`) means a literal or default is set directly in the config.
 
 ### 4. Test
 
@@ -236,7 +234,7 @@ No additional flags. Reads config and prints each set name, command count, and d
 | Flag | Description |
 |---|---|
 | `<set>` | Name of the set to run (required) |
-| `--arg key=value` | Supply a value for a declared set parameter. Repeatable. |
+| `--<param>` | Value for a declared set param, e.g. `--uri=spotify:playlist:abc123`. Run `spotctl sets` to see declared params for each set. |
 
 ### `play`
 

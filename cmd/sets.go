@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 
+	"github.com/spf13/pflag"
 	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/sets"
 	"github.com/spf13/cobra"
@@ -57,14 +57,46 @@ func runSets(cmd *cobra.Command, args []string) error {
 
 // ---- run --------------------------------------------------------------------
 
-var runArgFlags []string
-
 var runCmd = &cobra.Command{
 	Use:   "run <set>",
 	Short: "Run a named set of Spotify commands",
-	Args:  cobra.ExactArgs(1),
+	Long: `Run a named set of Spotify commands.
+
+Sets that declare params accept values as flags named after the param:
+
+  spotctl run my_set --uri spotify:playlist:abc123 --volume 50
+
+Run 'spotctl sets' to see declared params for each set.`,
+	Args:               cobra.ArbitraryArgs,
+	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
+		// DisableFlagParsing means cobra gives us all tokens raw, including
+		// persistent flags like --config. We do a first pass with a temporary
+		// flagset to extract --config and the set name, then a second pass
+		// with the dynamic param flags registered.
+		if len(args) == 0 {
+			return fmt.Errorf("requires a set name argument")
+		}
+
+		// First pass: strip --config <path> from args and update configPath.
+		remaining := make([]string, 0, len(args))
+		for i := 0; i < len(args); i++ {
+			switch {
+			case args[i] == "--config" && i+1 < len(args):
+				configPath = args[i+1]
+				i++
+			case len(args[i]) > 9 && args[i][:9] == "--config=":
+				configPath = args[i][9:]
+			default:
+				remaining = append(remaining, args[i])
+			}
+		}
+
+		if len(remaining) == 0 {
+			return fmt.Errorf("requires a set name argument")
+		}
+		name := remaining[0]
+		flagTokens := remaining[1:]
 
 		cfg, err := config.Load(configPath)
 		if err != nil {
@@ -76,12 +108,28 @@ var runCmd = &cobra.Command{
 			return fmt.Errorf("set %q not found in config", name)
 		}
 
-		setArgs, err := parseArgFlags(runArgFlags)
-		if err != nil {
+		// Second pass: register dynamic flags for declared params and parse.
+		fs := pflag.NewFlagSet("run-params", pflag.ContinueOnError)
+		setArgs := make(map[string]*string, len(set.Params))
+		for paramName := range set.Params {
+			v := new(string)
+			setArgs[paramName] = v
+			fs.StringVar(v, paramName, "", fmt.Sprintf("value for set param %q", paramName))
+		}
+
+		if err := fs.Parse(flagTokens); err != nil {
 			return err
 		}
 
-		rs, err := sets.Build(name, set, cfg, 0, setArgs)
+		// Collect only flags that were explicitly provided.
+		resolvedArgs := make(map[string]string, len(setArgs))
+		for k, v := range setArgs {
+			if *v != "" {
+				resolvedArgs[k] = *v
+			}
+		}
+
+		rs, err := sets.Build(name, set, cfg, 0, resolvedArgs)
 		if err != nil {
 			return err
 		}
@@ -95,26 +143,8 @@ var runCmd = &cobra.Command{
 	},
 }
 
-// parseArgFlags converts ["key=value", ...] into a map. Returns an error for
-// any entry that does not contain exactly one "=" separator.
-func parseArgFlags(flags []string) (map[string]string, error) {
-	if len(flags) == 0 {
-		return nil, nil
-	}
-	out := make(map[string]string, len(flags))
-	for _, f := range flags {
-		key, val, ok := strings.Cut(f, "=")
-		if !ok || key == "" {
-			return nil, fmt.Errorf("--arg %q: expected key=value format", f)
-		}
-		out[key] = val
-	}
-	return out, nil
-}
-
 // ---- init -------------------------------------------------------------------
 
 func init() {
-	runCmd.Flags().StringArrayVar(&runArgFlags, "arg", nil, "set parameter as key=value (repeatable)")
 	rootCmd.AddCommand(setsCmd, runCmd)
 }

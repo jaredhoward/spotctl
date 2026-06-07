@@ -11,16 +11,29 @@ redirect_uri: https://your-redirect-uri
 #
 # Each command has:
 #   action     - what to do: play, pause, next, previous, shuffle, repeat,
-#                volume, transfer, run_set
+#                volume, transfer, sleep, run_set
 #   params     - action-specific parameters (see examples below)
-#   confirm    - (default: false) poll Spotify state until the action is
-#                reflected before moving on
-#   timeout    - (default: 15s) overall command deadline including confirmation
-#   on_error   - (default: set-level or "fail") fail | continue | skip_remaining
+#   confirm    - poll Spotify state until the action is reflected before
+#                moving on. Defaults to set-level confirm, then true.
+#   timeout    - overall command deadline including confirmation.
+#                Defaults to set-level timeout, then 15s.
+#   on_error   - fail | continue | skip_remaining
+#                Defaults to set-level on_error, then "fail".
 #   on_timeout - same options as on_error
 #
-# Set-level device_id applies to all commands that don't define their own.
-# Set-level on_error / on_timeout set the default for all commands within.
+# Set-level fields:
+#   device_id  - applies to all commands that don't define their own
+#   confirm    - default confirm for all commands in the set
+#   timeout    - default timeout for all commands in the set
+#   on_error   - default error policy for all commands in the set
+#   on_timeout - default timeout policy for all commands in the set
+#   params     - named parameters the set accepts, each with an optional
+#                default and required flag. Supply values via --<name>=<value>
+#                on the CLI, or as sibling keys under run_set params.
+#
+# To reference a param inside a command, use {{ name }} syntax:
+#   uri: '{{ uri }}'
+# In 'spotctl sets' output, these render as <name> (e.g. uri=<uri>).
 
 sets:
   # Play a playlist with shuffle and repeat on a specific device.
@@ -105,3 +118,38 @@ sets:
       - action: run_set
         params:
           set: wind_down
+
+  # Parameterised set: play any playlist on a specific device.
+  # Call with: spotctl run bedroom_play --uri spotify:playlist:YOUR_ID
+  # Or compose with run_set:
+  #   - action: run_set
+  #     params:
+  #       set: bedroom_play
+  #       uri: spotify:playlist:YOUR_ID
+  bedroom_play:
+    device_id: YOUR_SPOTIFY_DEVICE_ID
+    confirm: false
+    timeout: 20s
+    on_timeout: fail
+    on_error: fail
+    params:
+      uri:
+        required: true
+      volume:
+        default: "40"
+    commands:
+      - action: volume
+        params:
+          level: 0
+      - action: pause
+      - action: play
+        params:
+          uri: '{{ uri }}'
+        confirm: true
+      - action: shuffle
+        params:
+          enabled: true
+        timeout: 5s
+      - action: volume
+        params:
+          level: '{{ volume }}'

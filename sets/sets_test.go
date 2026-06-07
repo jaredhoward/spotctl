@@ -467,6 +467,16 @@ func TestRunSet_CommandOverridesSetDefault(t *testing.T) {
 
 // ---- Sleep ------------------------------------------------------------------
 
+func TestSleep_Label(t *testing.T) {
+	set := config.Set{Commands: []config.Command{
+		{Action: "sleep", Params: config.CommandParams{Duration: "30ms"}},
+	}}
+	label := sets.CommandLabel(1, set.Commands[0])
+	if !strings.Contains(label, "sleep") || !strings.Contains(label, "30ms") {
+		t.Errorf("unexpected sleep label: %q", label)
+	}
+}
+
 func TestRunSet_Sleep(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "sleep", Params: config.CommandParams{Duration: "20ms"}},
@@ -679,13 +689,13 @@ func TestCommandLabel(t *testing.T) {
 				Name:     "my play",
 				Params:   config.CommandParams{URI: "spotify:track:abc"},
 			},
-			want: []string{"play", "uri=spotify:track:abc", "device=dev1", "confirm", "(my play)"},
+			want: []string{"play", "uri=spotify:track:abc", "device=dev1", "confirm=true", "(my play)"},
 		},
 		{
 			name: "volume with level",
 			cmd: config.Command{
 				Action: "volume",
-				Params: config.CommandParams{Level: func(i int) *int { return &i }(5)},
+				Params: config.CommandParams{Level: &config.IntOrTemplate{Value: 5}},
 			},
 			want: []string{"volume", "level=5"},
 		},

@@ -35,7 +35,7 @@ func TestSetsCmd_WithSets(t *testing.T) {
 	oldConfigPath := configPath
 	defer func() { configPath = oldConfigPath }()
 
-	level := 50
+	level := config.IntOrTemplate{Value: 50}
 	cfg := &config.Config{
 		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
 		Sets: map[string]config.Set{
@@ -281,6 +281,9 @@ func TestRepeatCmd_Context_NoDevice(t *testing.T) {
 // ----- appVersion ------------------------------------------------------------
 
 func TestAppVersionDefault(t *testing.T) {
+	old := appVersion
+	defer func() { appVersion = old }()
+	appVersion = "dev"
 	if appVersion != "dev" {
 		t.Errorf("expected default appVersion to be 'dev', got %q", appVersion)
 	}

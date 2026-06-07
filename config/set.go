@@ -1,9 +1,9 @@
 package config
 
 import (
-	"bytes"
 	"fmt"
-	"text/template"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -143,6 +143,45 @@ func (c *Command) EffectiveOnTimeout(setDefault OnFailure) OnFailure {
 	return OnFailureFail
 }
 
+// IntOrTemplate holds a volume level that may be a literal int or a
+// {{ name }} placeholder resolved at interpolation time.
+type IntOrTemplate struct {
+	Value int
+	Expr  string // non-empty when a template placeholder was specified
+}
+
+func (v *IntOrTemplate) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Try int first.
+	var i int
+	if err := unmarshal(&i); err == nil {
+		v.Value = i
+		return nil
+	}
+	// Fall back to string (template expression).
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	v.Expr = s
+	return nil
+}
+
+func (v IntOrTemplate) MarshalYAML() (interface{}, error) {
+	if v.Expr != "" {
+		return v.Expr, nil
+	}
+	return v.Value, nil
+}
+
+// Resolved returns the int value after interpolation, or an error if the
+// expression hasn't been resolved yet.
+func (v *IntOrTemplate) Resolved() (int, error) {
+	if v.Expr != "" {
+		return 0, fmt.Errorf("level expression %q was not resolved before use", v.Expr)
+	}
+	return v.Value, nil
+}
+
 // SetParam declares a single parameter a set accepts, with an optional
 // default and a required flag.
 type SetParam struct {
@@ -157,14 +196,57 @@ type CommandParams struct {
 	TrackID     string            `yaml:"track,omitempty"`
 	AlbumID     string            `yaml:"album,omitempty"`
 	ArtistID    string            `yaml:"artist,omitempty"`
-	Level       *int              `yaml:"level,omitempty"`
+	Level       *IntOrTemplate    `yaml:"level,omitempty"`
 	Play        *bool             `yaml:"play,omitempty"`
 	Enabled     *bool             `yaml:"enabled,omitempty"`
 	Duration    string            `yaml:"duration,omitempty"`
 	Set         string            `yaml:"set,omitempty"`
 	RepeatState string            `yaml:"state,omitempty"` // off | track | context
-	// Args passes caller-supplied parameter values into a run_set target.
-	Args        map[string]string `yaml:"args,omitempty"`
+	// Forwarded captures any YAML keys under params not claimed by named fields.
+	// For run_set, these are passed as args to the target set.
+	Forwarded   map[string]string `yaml:",inline"`
+}
+
+// ForwardedArgs collects all param values suitable for passing to a run_set
+// target: named string fields that are set, the Level value if present, and
+// anything in the inline Forwarded map. The structural `set` field is excluded.
+func (p *CommandParams) ForwardedArgs() map[string]string {
+	out := make(map[string]string)
+	for k, v := range p.Forwarded {
+		out[k] = v
+	}
+	if p.URI != "" {
+		out["uri"] = p.URI
+	}
+	if p.PlaylistID != "" {
+		out["playlist"] = p.PlaylistID
+	}
+	if p.TrackID != "" {
+		out["track"] = p.TrackID
+	}
+	if p.AlbumID != "" {
+		out["album"] = p.AlbumID
+	}
+	if p.ArtistID != "" {
+		out["artist"] = p.ArtistID
+	}
+	if p.Duration != "" {
+		out["duration"] = p.Duration
+	}
+	if p.RepeatState != "" {
+		out["state"] = p.RepeatState
+	}
+	if p.Level != nil {
+		if p.Level.Expr != "" {
+			out["volume"] = p.Level.Expr
+		} else {
+			out["volume"] = fmt.Sprintf("%d", p.Level.Value)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // ShuffleEnabled returns the value of Enabled, defaulting to true.
@@ -218,26 +300,24 @@ func (p *CommandParams) Validate(action string) error {
 	return nil
 }
 
-// interpolateString executes a Go template against the resolved param map,
-// returning the rendered string or the original if no placeholders are present.
+// placeholderExpr matches {{ name }} style placeholders used in command params.
+var placeholderExpr = regexp.MustCompile(`\{\{\s*(\w+)\s*\}\}`)
+
+// interpolateString replaces {{ name }} placeholders with values from data.
+// Unknown keys render as empty strings.
 func interpolateString(s string, data map[string]string) (string, error) {
-	if s == "" {
+	if s == "" || !strings.Contains(s, "{{") {
 		return s, nil
 	}
-	tmpl, err := template.New("").Option("missingkey=zero").Parse(s)
-	if err != nil {
-		return "", fmt.Errorf("invalid template %q: %w", s, err)
-	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("template execution failed for %q: %w", s, err)
-	}
-	return buf.String(), nil
+	return placeholderExpr.ReplaceAllStringFunc(s, func(match string) string {
+		key := strings.TrimSpace(placeholderExpr.FindStringSubmatch(match)[1])
+		return data[key]
+	}), nil
 }
 
 // InterpolateParams returns a copy of CommandParams with all string fields
 // rendered against the resolved param map. Non-string fields (Level, Play,
-// Enabled) are copied as-is. Unknown template keys render as empty strings.
+// Enabled) are copied as-is. Unknown placeholder keys render as empty strings.
 func (p *CommandParams) InterpolateParams(resolved map[string]string) (CommandParams, error) {
 	out := *p // shallow copy; pointer fields shared until overwritten below
 	type strField struct {
@@ -260,6 +340,18 @@ func (p *CommandParams) InterpolateParams(resolved map[string]string) (CommandPa
 			return CommandParams{}, err
 		}
 		*f.dst = val
+	}
+	// Interpolate Level.Expr if present.
+	if p.Level != nil && p.Level.Expr != "" {
+		interpolated, err := interpolateString(p.Level.Expr, resolved)
+		if err != nil {
+			return CommandParams{}, err
+		}
+		var i int
+		if _, err := fmt.Sscanf(interpolated, "%d", &i); err != nil {
+			return CommandParams{}, fmt.Errorf("level expression %q resolved to %q which is not an integer", p.Level.Expr, interpolated)
+		}
+		out.Level = &IntOrTemplate{Value: i}
 	}
 	return out, nil
 }

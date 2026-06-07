@@ -8,9 +8,9 @@ import (
 	"github.com/jaredhoward/spotctl/config"
 )
 
-// paramLabel replaces Go template expressions like `{{ index . "key" }}` with
-// the more readable `<key>` for display in the sets listing.
-var templateExpr = regexp.MustCompile(`\{\{\s*index\s+\.\s+"(\w+)"\s*\}\}`)
+// paramLabel replaces {{ name }} placeholders with the more readable <name>
+// for display in the sets listing.
+var templateExpr = regexp.MustCompile(`\{\{\s*(\w+)\s*\}\}`)
 
 func paramLabel(s string) string {
 	return templateExpr.ReplaceAllString(s, "<$1>")
@@ -38,7 +38,11 @@ func CommandLabel(n int, c config.Command) string {
 		}
 	case "volume":
 		if c.Params.Level != nil {
-			parts = append(parts, fmt.Sprintf("level=%d", *c.Params.Level))
+			if c.Params.Level.Expr != "" {
+				parts = append(parts, fmt.Sprintf("level=%s", paramLabel(c.Params.Level.Expr)))
+			} else {
+				parts = append(parts, fmt.Sprintf("level=%d", c.Params.Level.Value))
+			}
 		}
 	case "shuffle":
 		parts = append(parts, fmt.Sprintf("enabled=%v", c.Params.ShuffleEnabled()))
@@ -54,8 +58,8 @@ func CommandLabel(n int, c config.Command) string {
 		if c.Params.Set != "" {
 			parts = append(parts, fmt.Sprintf("set=%s", c.Params.Set))
 		}
-		for k, v := range c.Params.Args {
-			parts = append(parts, fmt.Sprintf("arg:%s=%s", k, paramLabel(v)))
+		for k, v := range c.Params.ForwardedArgs() {
+			parts = append(parts, fmt.Sprintf("%s=%s", k, paramLabel(v)))
 		}
 	}
 

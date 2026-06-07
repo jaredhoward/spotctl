@@ -5,13 +5,13 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
+
+	"github.com/jaredhoward/spotctl/config"
 )
 
 func TestOauthFlow_Success(t *testing.T) {
-	// Setup test server to simulate Spotify token endpoint
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST, got %s", r.Method)
@@ -25,30 +25,16 @@ func TestOauthFlow_Success(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"refresh_token": "test-refresh-token"})
 	}))
-	defer ts.Close()
 
-	// Patch http.DefaultClient.Do to redirect to our test server
-	oldDefaultClient := http.DefaultClient
-	http.DefaultClient = ts.Client()
-	defer func() { http.DefaultClient = oldDefaultClient }()
+	oldClient := oauthHTTPClient
+	oauthHTTPClient = ts.Client()
 
-	clientID := "cid"
-	clientSecret := "csecret"
-	redirectURI := "http://localhost/callback"
+	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
+	refreshToken, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, ts.URL)
 
-	// Simulate user input for redirect URL
-	redirected := redirectURI + "?code=testcode"
-	r, w, _ := os.Pipe()
-	oldStdin := os.Stdin
-	os.Stdin = r
-	defer func() { os.Stdin = oldStdin }()
-	go func() {
-		w.Write([]byte(redirected + "\n"))
-		w.Close()
-	}()
+	ts.Close()
+	oauthHTTPClient = oldClient
 
-	// Patch prompt to just read from stdin
-	refreshToken, err := oauthFlow(clientID, clientSecret, redirectURI, ts.URL)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -58,99 +44,123 @@ func TestOauthFlow_Success(t *testing.T) {
 }
 
 func TestOauthFlow_ParseError(t *testing.T) {
-	clientID := "cid"
-	clientSecret := "csecret"
-	redirectURI := "http://localhost/callback"
-
-	// Simulate bad URL input
-	r, w, _ := os.Pipe()
-	os.Stdin = r
-	defer func() { os.Stdin = os.NewFile(0, "/dev/stdin") }()
-	go func() {
-		w.Write([]byte("not a url\n"))
-		w.Close()
-	}()
-
-	_, err := oauthFlow(clientID, clientSecret, redirectURI, "http://localhost/token")
+	stdin := strings.NewReader("not a url\n")
+	_, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, "http://localhost/token")
 	if err == nil || (!strings.Contains(err.Error(), "could not parse redirect URL") && !strings.Contains(err.Error(), "no code found in redirect URL")) {
 		t.Fatalf("expected parse or no code error, got %v", err)
 	}
 }
 
 func TestOauthFlow_NoCode(t *testing.T) {
-	clientID := "cid"
-	clientSecret := "csecret"
-	redirectURI := "http://localhost/callback"
-
-	// Simulate URL with no code
-	r, w, _ := os.Pipe()
-	os.Stdin = r
-	defer func() { os.Stdin = os.NewFile(0, "/dev/stdin") }()
-	go func() {
-		w.Write([]byte(redirectURI + "?error=access_denied\n"))
-		w.Close()
-	}()
-
-	_, err := oauthFlow(clientID, clientSecret, redirectURI, "http://localhost/token")
+	stdin := strings.NewReader("http://localhost/callback?error=access_denied\n")
+	_, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, "http://localhost/token")
 	if err == nil || !strings.Contains(err.Error(), "no code found") {
 		t.Fatalf("expected no code error, got %v", err)
 	}
 }
 
 func TestOauthFlow_TokenExchangeError(t *testing.T) {
-	clientID := "cid"
-	clientSecret := "csecret"
-	redirectURI := "http://localhost/callback"
-
-	// Patch http.DefaultClient.Do to simulate network error
-	oldDefaultClient := http.DefaultClient
-	http.DefaultClient = &http.Client{
+	oldClient := oauthHTTPClient
+	oauthHTTPClient = &http.Client{
 		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, errors.New("network fail")
 		}),
 	}
-	defer func() { http.DefaultClient = oldDefaultClient }()
+	defer func() { oauthHTTPClient = oldClient }()
 
-	r, w, _ := os.Pipe()
-	os.Stdin = r
-	defer func() { os.Stdin = os.NewFile(0, "/dev/stdin") }()
-	go func() {
-		w.Write([]byte(redirectURI + "?code=testcode\n"))
-		w.Close()
-	}()
-
-	_, err := oauthFlow(clientID, clientSecret, redirectURI, "http://localhost/token")
+	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
+	_, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, "http://localhost/token")
 	if err == nil || !strings.Contains(err.Error(), "token exchange failed") {
 		t.Fatalf("expected token exchange error, got %v", err)
 	}
 }
 
 func TestOauthFlow_DecodeError(t *testing.T) {
-	clientID := "cid"
-	clientSecret := "csecret"
-	redirectURI := "http://localhost/callback"
-
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte("not json"))
 	}))
-	defer ts.Close()
 
-	oldDefaultClient := http.DefaultClient
-	http.DefaultClient = ts.Client()
-	defer func() { http.DefaultClient = oldDefaultClient }()
+	oldClient := oauthHTTPClient
+	oauthHTTPClient = ts.Client()
 
-	r, w, _ := os.Pipe()
-	os.Stdin = r
-	defer func() { os.Stdin = os.NewFile(0, "/dev/stdin") }()
-	go func() {
-		w.Write([]byte(redirectURI + "?code=testcode\n"))
-		w.Close()
-	}()
+	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
+	_, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, ts.URL)
 
-	_, err := oauthFlow(clientID, clientSecret, redirectURI, ts.URL)
+	ts.Close()
+	oauthHTTPClient = oldClient
+
 	if err == nil || !strings.Contains(err.Error(), "could not decode token response") {
 		t.Fatalf("expected decode error, got %v", err)
+	}
+}
+
+func TestOauthFlow_NoRefreshToken(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"access_token": "only-access"})
+	}))
+
+	oldClient := oauthHTTPClient
+	oauthHTTPClient = ts.Client()
+
+	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
+	_, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, ts.URL)
+
+	ts.Close()
+	oauthHTTPClient = oldClient
+
+	if err == nil || !strings.Contains(err.Error(), "no refresh token") {
+		t.Fatalf("expected no refresh token error, got %v", err)
+	}
+}
+
+func TestSetupCmd_SavesConfig(t *testing.T) {
+	oldConfigPath := configPath
+	defer func() { configPath = oldConfigPath }()
+
+	tmpFile := writeTempConfig(t, &config.Config{})
+	if tmpFile == "" {
+		t.Fatal("failed to create temp config")
+	}
+	configPath = tmpFile
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"refresh_token": "saved-refresh-token"})
+	}))
+
+	oldClient := oauthHTTPClient
+	oauthHTTPClient = ts.Client()
+
+	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
+	refreshToken, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, ts.URL)
+
+	ts.Close()
+	oauthHTTPClient = oldClient
+
+	if err != nil {
+		t.Fatalf("oauthFlow failed: %v", err)
+	}
+	if refreshToken != "saved-refresh-token" {
+		t.Fatalf("unexpected refresh token: %q", refreshToken)
+	}
+
+	cfg := &config.Config{
+		ClientID:     "cid",
+		ClientSecret: "csecret",
+		RefreshToken: refreshToken,
+	}
+	if err := config.Save(configPath, cfg); err != nil {
+		t.Fatalf("config.Save failed: %v", err)
+	}
+
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("config.Load failed: %v", err)
+	}
+	if loaded.RefreshToken != "saved-refresh-token" {
+		t.Errorf("expected saved-refresh-token, got %q", loaded.RefreshToken)
 	}
 }
 
