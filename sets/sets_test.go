@@ -18,8 +18,6 @@ import (
 
 // ---- test helpers -----------------------------------------------------------
 
-func boolPtr(b bool) *bool { return &b }
-
 func mockServer(t *testing.T, handlers map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +78,7 @@ func TestBuild_Play_Playlist(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{PlaylistID: "pl123"}, Confirm: boolPtr(false)}}}
+	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{PlaylistID: "pl123"}, Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +102,7 @@ func TestBuild_Play_Track(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{TrackID: "tr456"}, Confirm: boolPtr(false)}}}
+	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{TrackID: "tr456"}, Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +126,7 @@ func TestBuild_Play_Album(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{AlbumID: "al789"}, Confirm: boolPtr(false)}}}
+	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{AlbumID: "al789"}, Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +150,7 @@ func TestBuild_Play_Artist(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{ArtistID: "ar999"}, Confirm: boolPtr(false)}}}
+	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{ArtistID: "ar999"}, Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +186,7 @@ func TestBuild_SetLevelDeviceApplied(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	set := config.Set{DeviceID: "set-device", Commands: []config.Command{{Action: "pause", Confirm: boolPtr(false)}}}
+	set := config.Set{DeviceID: "set-device", Commands: []config.Command{{Action: "pause", Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +212,7 @@ func TestBuild_CommandDeviceOverridesSet(t *testing.T) {
 
 	set := config.Set{
 		DeviceID: "set-device",
-		Commands: []config.Command{{Action: "pause", DeviceID: "cmd-device", Confirm: boolPtr(false)}},
+		Commands: []config.Command{{Action: "pause", DeviceID: "cmd-device", Confirm: new(false)}},
 	}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
@@ -239,7 +237,7 @@ func TestRunSet_PlayNoConfirm(t *testing.T) {
 	defer srv.Close()
 	useTestServer(t, srv)
 
-	set := config.Set{Commands: []config.Command{{Action: "play", DeviceID: "d1", Confirm: boolPtr(false)}}}
+	set := config.Set{Commands: []config.Command{{Action: "play", DeviceID: "d1", Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -268,7 +266,7 @@ func TestRunSet_PlayAndConfirm(t *testing.T) {
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{
-		{Action: "play", DeviceID: "d1", Confirm: boolPtr(true), Timeout: "5s"},
+		{Action: "play", DeviceID: "d1", Confirm: new(true), Timeout: "5s"},
 	}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
@@ -297,7 +295,7 @@ func TestRunSet_ConfirmTimeout_Continue(t *testing.T) {
 	set := config.Set{
 		OnTimeout: config.OnFailureContinue,
 		Commands: []config.Command{
-			{Action: "play", DeviceID: "d1", Confirm: boolPtr(true), Timeout: "50ms"},
+			{Action: "play", DeviceID: "d1", Confirm: new(true), Timeout: "50ms"},
 			{Action: "pause", DeviceID: "d1"},
 		},
 	}
@@ -324,7 +322,7 @@ func TestRunSet_ConfirmTimeout_Fail(t *testing.T) {
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{
-		{Action: "play", DeviceID: "d1", Confirm: boolPtr(true), Timeout: "50ms", OnTimeout: config.OnFailureFail},
+		{Action: "play", DeviceID: "d1", Confirm: new(true), Timeout: "50ms", OnTimeout: config.OnFailureFail},
 	}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
 	if err != nil {
@@ -349,7 +347,7 @@ func TestRunSet_ConfirmTimeout_SkipRemaining(t *testing.T) {
 	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{
-		{Action: "play", DeviceID: "d1", Confirm: boolPtr(true), Timeout: "50ms", OnTimeout: config.OnFailureSkipRemaining},
+		{Action: "play", DeviceID: "d1", Confirm: new(true), Timeout: "50ms", OnTimeout: config.OnFailureSkipRemaining},
 		{Action: "pause", DeviceID: "d1"},
 	}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
@@ -378,7 +376,7 @@ func TestRunSet_CommandError_Continue(t *testing.T) {
 		OnError: config.OnFailureContinue,
 		Commands: []config.Command{
 			{Action: "next", DeviceID: "d1"},
-			{Action: "pause", DeviceID: "d1", Confirm: boolPtr(false)},
+			{Action: "pause", DeviceID: "d1", Confirm: new(false)},
 		},
 	}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
@@ -685,7 +683,7 @@ func TestCommandLabel(t *testing.T) {
 			cmd: config.Command{
 				Action:   "play",
 				DeviceID: "dev1",
-				Confirm:  boolPtr(true),
+				Confirm:  new(true),
 				Name:     "my play",
 				Params:   config.CommandParams{URI: "spotify:track:abc"},
 			},
