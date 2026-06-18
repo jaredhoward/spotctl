@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/jaredhoward/spotctl/config"
@@ -48,6 +49,16 @@ func newClientFromConfig() (*spotify.Client, error) {
 
 	accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
 	if err != nil {
+		if errors.Is(err, spotify.ErrInvalidGrant) {
+			// The refresh token itself is no longer valid (e.g. it has hit
+			// Spotify's expiry window). Do not retry the refresh — discard
+			// the stored token and send the user back through sign-in.
+			cfg.RefreshToken = ""
+			if saveErr := config.Save(configPath, cfg); saveErr != nil {
+				return nil, fmt.Errorf("refresh token expired and could not be cleared from config: %w", saveErr)
+			}
+			return nil, fmt.Errorf("your Spotify sign-in has expired, please run 'spotctl setup' to reauthorize: %w", err)
+		}
 		return nil, fmt.Errorf("failed to refresh token: %w", err)
 	}
 
