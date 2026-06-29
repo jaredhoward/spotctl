@@ -631,6 +631,51 @@ func TestSpotifyActionLabelsAndConfirmed(t *testing.T) {
 	}
 }
 
+func TestPrevious_ConfirmedNilState(t *testing.T) {
+	p := &Previous{priorState: &PlaybackState{Item: &Track{URI: "spotify:track:old"}}}
+	if p.Confirmed(nil) {
+		t.Error("expected Confirmed=false for nil state")
+	}
+	noItem := &PlaybackState{}
+	if p.Confirmed(noItem) {
+		t.Error("expected Confirmed=false when current state has no item")
+	}
+}
+
+// TestDispatch_RequestCreationError exercises the error path returned when
+// URLPlayer is set to a value that makes http.NewRequestWithContext fail
+// (a URL containing a null byte is rejected by the net/url parser).
+func TestDispatch_RequestCreationError(t *testing.T) {
+	oldURLPlayer := URLPlayer
+	t.Cleanup(func() { URLPlayer = oldURLPlayer })
+	URLPlayer = "http://\x00invalid"
+
+	client := &Client{accessToken: "t", httpClient: http.DefaultClient}
+	ctx := context.Background()
+
+	actions := []struct {
+		name   string
+		action Action
+	}{
+		{"play with context", &Play{ContextURI: "spotify:track:abc"}},
+		{"play without context", &Play{}},
+		{"pause", &Pause{}},
+		{"next", &Next{}},
+		{"previous", &Previous{}},
+		{"shuffle", &Shuffle{}},
+		{"repeat", &Repeat{State: "off"}},
+		{"volume", &Volume{}},
+		{"transfer", &Transfer{}},
+	}
+	for _, tt := range actions {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.action.Dispatch(ctx, client); err == nil {
+				t.Fatalf("expected error for invalid URL")
+			}
+		})
+	}
+}
+
 // TestSnapshotDispatch verifies that Next, Previous, and Play (no ContextURI)
 // capture priorState during Dispatch and use it correctly in Confirmed.
 func TestSnapshotDispatch(t *testing.T) {

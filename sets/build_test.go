@@ -289,3 +289,117 @@ func TestBuild_UnknownAction(t *testing.T) {
 		t.Fatalf("expected unknown action error, got %v", err)
 	}
 }
+
+// buildAction is reachable for any action that passes Validate. These tests
+// exercise the branches not covered by integration-style tests in sets_test.go.
+
+func TestBuildAction_Previous(t *testing.T) {
+	set := config.Set{Commands: []config.Command{{Action: "previous", DeviceID: "dev1", Confirm: new(false)}}}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rs.Steps) != 1 {
+		t.Fatalf("expected 1 step, got %d", len(rs.Steps))
+	}
+	prev, ok := rs.Steps[0].action.(*spotify.Previous)
+	if !ok {
+		t.Fatalf("expected *spotify.Previous, got %T", rs.Steps[0].action)
+	}
+	if prev.DeviceID != "dev1" {
+		t.Errorf("expected DeviceID=dev1, got %q", prev.DeviceID)
+	}
+}
+
+func TestBuildAction_Shuffle(t *testing.T) {
+	enabled := true
+	set := config.Set{Commands: []config.Command{
+		{Action: "shuffle", DeviceID: "dev1", Params: config.CommandParams{Enabled: &enabled}, Confirm: new(false)},
+	}}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a, ok := rs.Steps[0].action.(*spotify.Shuffle)
+	if !ok {
+		t.Fatalf("expected *spotify.Shuffle, got %T", rs.Steps[0].action)
+	}
+	if !a.Enabled {
+		t.Error("expected Enabled=true")
+	}
+}
+
+func TestBuildAction_Repeat(t *testing.T) {
+	set := config.Set{Commands: []config.Command{
+		{Action: "repeat", DeviceID: "dev1", Params: config.CommandParams{RepeatState: "track"}, Confirm: new(false)},
+	}}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a, ok := rs.Steps[0].action.(*spotify.Repeat)
+	if !ok {
+		t.Fatalf("expected *spotify.Repeat, got %T", rs.Steps[0].action)
+	}
+	if a.State != "track" {
+		t.Errorf("expected State=track, got %q", a.State)
+	}
+}
+
+func TestBuildAction_Volume(t *testing.T) {
+	level := config.IntOrTemplate{Value: 75}
+	set := config.Set{Commands: []config.Command{
+		{Action: "volume", DeviceID: "dev1", Params: config.CommandParams{Level: &level}, Confirm: new(false)},
+	}}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a, ok := rs.Steps[0].action.(*spotify.Volume)
+	if !ok {
+		t.Fatalf("expected *spotify.Volume, got %T", rs.Steps[0].action)
+	}
+	if a.Level != 75 {
+		t.Errorf("expected Level=75, got %d", a.Level)
+	}
+}
+
+func TestBuildAction_VolumeUnresolvedExpr(t *testing.T) {
+	// Call buildAction directly with an Expr that was not resolved to an int;
+	// Resolved() must return an error.
+	level := config.IntOrTemplate{Expr: "still-a-template"}
+	cmd := config.Command{
+		Action: "volume",
+		Params: config.CommandParams{Level: &level},
+	}
+	_, err := buildAction(cmd, "", minimalCfg(nil), 0)
+	if err == nil || !strings.Contains(err.Error(), "not resolved") {
+		t.Fatalf("expected unresolved expression error from buildAction, got %v", err)
+	}
+}
+
+func TestBuildAction_Transfer(t *testing.T) {
+	play := true
+	set := config.Set{Commands: []config.Command{
+		{Action: "transfer", DeviceID: "target", Params: config.CommandParams{Play: &play}, Confirm: new(false)},
+	}}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a, ok := rs.Steps[0].action.(*spotify.Transfer)
+	if !ok {
+		t.Fatalf("expected *spotify.Transfer, got %T", rs.Steps[0].action)
+	}
+	if !a.Play {
+		t.Error("expected Play=true")
+	}
+}
+
+func TestBuildAction_UnknownDirectly(t *testing.T) {
+	cmd := config.Command{Action: "bogus"}
+	_, err := buildAction(cmd, "", minimalCfg(nil), 0)
+	if err == nil || !strings.Contains(err.Error(), "unknown action") {
+		t.Fatalf("expected unknown action error from buildAction, got %v", err)
+	}
+}

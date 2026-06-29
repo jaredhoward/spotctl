@@ -717,6 +717,31 @@ func TestCommandLabel(t *testing.T) {
 			cmd:  config.Command{Action: "run_set", Params: config.CommandParams{Set: "inner"}},
 			want: []string{"run_set", "set=inner"},
 		},
+		{
+			name: "play with playlist id",
+			cmd:  config.Command{Action: "play", Params: config.CommandParams{PlaylistID: "pl123"}},
+			want: []string{"play", "playlist=pl123"},
+		},
+		{
+			name: "play with track id",
+			cmd:  config.Command{Action: "play", Params: config.CommandParams{TrackID: "tr456"}},
+			want: []string{"play", "track=tr456"},
+		},
+		{
+			name: "play with album id",
+			cmd:  config.Command{Action: "play", Params: config.CommandParams{AlbumID: "al789"}},
+			want: []string{"play", "album=al789"},
+		},
+		{
+			name: "play with artist id",
+			cmd:  config.Command{Action: "play", Params: config.CommandParams{ArtistID: "ar999"}},
+			want: []string{"play", "artist=ar999"},
+		},
+		{
+			name: "volume with template expr",
+			cmd:  config.Command{Action: "volume", Params: config.CommandParams{Level: &config.IntOrTemplate{Expr: "{{ vol }}"}}},
+			want: []string{"volume", "level=<vol>"},
+		},
 	}
 
 	for _, tt := range cases {
@@ -728,6 +753,59 @@ func TestCommandLabel(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestExecute_DefaultPollIntervalAndTimeout(t *testing.T) {
+	// PollInterval and Timeout of 0 should fall back to the package defaults;
+	// verify Execute succeeds (doesn't hang) when defaults kick in.
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			w.Write(stateBody(spotify.PlaybackState{IsPlaying: true, Device: spotify.Device{ID: "d1"}}))
+		},
+	})
+	defer srv.Close()
+	useTestServer(t, srv)
+
+	a := &spotify.Play{DeviceID: "d1"}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:      true,
+		Timeout:      0, // triggers default
+		PollInterval: 0, // triggers default
+	})
+	if err != nil {
+		t.Fatalf("expected success with default poll/timeout, got %v", err)
+	}
+}
+
+func TestExecute_ContextCanceled(t *testing.T) {
+	// Cancel the context while Execute is in the confirm-poll loop.
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			// Always return not-playing so Confirmed never returns true.
+			w.Write(stateBody(spotify.PlaybackState{IsPlaying: false}))
+		},
+	})
+	defer srv.Close()
+	useTestServer(t, srv)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel immediately so the first poll loop iteration hits ctx.Done().
+	cancel()
+
+	a := &spotify.Play{DeviceID: "d1"}
+	err := sets.Execute(ctx, a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:      true,
+		Timeout:      5 * time.Second,
+		PollInterval: 10 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("expected context cancellation error")
+	}
+	if !strings.Contains(err.Error(), "context canceled") {
+		t.Errorf("expected context canceled error, got %v", err)
 	}
 }
 

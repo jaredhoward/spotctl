@@ -288,6 +288,81 @@ func TestResolveParams(t *testing.T) {
 			t.Errorf("expected empty resolved map, got %v", got)
 		}
 	})
+
+	t.Run("explicit empty string for required param errors", func(t *testing.T) {
+		s := Set{Params: map[string]SetParam{"track": {Required: true}}}
+		_, err := s.ResolveParams(map[string]string{"track": ""})
+		if err == nil {
+			t.Fatal("expected error for empty string passed to a required param")
+		}
+		if !strings.Contains(err.Error(), "track") {
+			t.Errorf("expected param name in error, got: %v", err)
+		}
+	})
+
+	t.Run("explicit empty string for optional param is accepted", func(t *testing.T) {
+		s := Set{Params: map[string]SetParam{"device": {}}}
+		got, err := s.ResolveParams(map[string]string{"device": ""})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got["device"] != "" {
+			t.Errorf("device: got %q, want empty string", got["device"])
+		}
+	})
+
+	t.Run("optional param absent resolves to empty string", func(t *testing.T) {
+		s := Set{Params: map[string]SetParam{"device": {}}}
+		got, err := s.ResolveParams(nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		val, ok := got["device"]
+		if !ok {
+			t.Fatal("expected optional param to be present in resolved map")
+		}
+		if val != "" {
+			t.Errorf("device: got %q, want empty string", val)
+		}
+	})
+}
+
+// ----- ResolveContextURI -----------------------------------------------------
+
+func TestResolveContextURI(t *testing.T) {
+	cases := []struct {
+		name    string
+		params  CommandParams
+		want    string
+		wantErr bool
+	}{
+		{"uri set", CommandParams{URI: "spotify:artist:abc"}, "spotify:artist:abc", false},
+		{"playlist set", CommandParams{PlaylistID: "p1"}, "spotify:playlist:p1", false},
+		{"track set", CommandParams{TrackID: "t1"}, "spotify:track:t1", false},
+		{"album set", CommandParams{AlbumID: "a1"}, "spotify:album:a1", false},
+		{"artist set", CommandParams{ArtistID: "ar1"}, "spotify:artist:ar1", false},
+		{"none set", CommandParams{}, "", false},
+		{"uri and playlist both set", CommandParams{URI: "spotify:artist:abc", PlaylistID: "p1"}, "", true},
+		{"all five set", CommandParams{URI: "u", PlaylistID: "p", TrackID: "t", AlbumID: "a", ArtistID: "ar"}, "", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tc.params.ResolveContextURI()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
 }
 
 // ----- InterpolateParams -----------------------------------------------------
@@ -869,6 +944,48 @@ func TestInterpolateParams_LevelExpr(t *testing.T) {
 			t.Errorf("expected 'not an integer' in error, got: %v", err)
 		}
 	})
+}
+
+func TestForwardedArgs_InlineForwarded(t *testing.T) {
+	p := CommandParams{
+		Set:      "my_set",
+		Forwarded: map[string]string{"custom_key": "custom_val"},
+	}
+	got := p.ForwardedArgs()
+	if got["custom_key"] != "custom_val" {
+		t.Errorf("expected custom_key=custom_val in forwarded args, got %v", got)
+	}
+}
+
+func TestInterpolateParams_LevelExprMissingKey(t *testing.T) {
+	p := CommandParams{Level: &IntOrTemplate{Expr: "{{ missing_vol }}"}}
+	_, err := p.InterpolateParams(map[string]string{})
+	if err == nil {
+		t.Fatal("expected error when Level.Expr key is missing from resolved map")
+	}
+	if !strings.Contains(err.Error(), "missing_vol") {
+		t.Errorf("expected missing key in error, got: %v", err)
+	}
+}
+
+func TestIntOrTemplate_UnmarshalYAML_InvalidType(t *testing.T) {
+	yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    commands:
+      - action: volume
+        params:
+          level:
+            - 1
+            - 2
+`
+	_, err := Load(writeYAML(t, yaml))
+	if err == nil {
+		t.Fatal("expected error when level is a YAML sequence (not int or string)")
+	}
 }
 
 // ----- ValidRepeatStates ----------------------------------------------------

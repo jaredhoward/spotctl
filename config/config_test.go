@@ -171,6 +171,116 @@ func TestSaveFailsOnUnwritablePath(t *testing.T) {
 	}
 }
 
+func TestSaveNewFileDefaultsTo0600(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/config.yaml"
+	cfg := &Config{ClientID: "id", ClientSecret: "s", RefreshToken: "r"}
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Errorf("expected new config file to be 0600, got %o", got)
+	}
+}
+
+func TestSavePreservesExistingPermissions(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/config.yaml"
+	cfg := &Config{ClientID: "id", ClientSecret: "s", RefreshToken: "r"}
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.RefreshToken = "rotated"
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0644 {
+		t.Errorf("expected Save to preserve 0644 permissions, got %o", got)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.RefreshToken != "rotated" {
+		t.Errorf("expected rotated content to be saved, got %q", loaded.RefreshToken)
+	}
+}
+
+func TestSaveLeavesNoTempFilesBehind(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/config.yaml"
+	cfg := &Config{ClientID: "id", ClientSecret: "s", RefreshToken: "r"}
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	// Save again to exercise the permission-preservation path too.
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("expected only config.yaml in dir, got %v", names)
+	}
+}
+
+func TestSaveDoesNotDestroyExistingFileOnTempCreateFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/config.yaml"
+	original := &Config{ClientID: "id", ClientSecret: "s", RefreshToken: "original"}
+	if err := Save(path, original); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the directory read-only so the temp file create fails, simulating
+	// a write failure partway through Save without touching the destination.
+	if err := os.Chmod(dir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(dir, 0700)
+
+	failing := &Config{ClientID: "id", ClientSecret: "s", RefreshToken: "should-not-be-saved"}
+	if err := Save(path, failing); err == nil {
+		t.Fatal("expected Save to fail when the directory is read-only")
+	}
+
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.RefreshToken != "original" {
+		t.Errorf("expected original content to survive a failed Save, got %q", loaded.RefreshToken)
+	}
+}
+
 func TestValidateMultipleMissingFields(t *testing.T) {
 	cfg := &Config{}
 	err := cfg.validate()
