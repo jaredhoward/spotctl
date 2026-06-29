@@ -65,6 +65,9 @@ func Save(path string, cfg *Config) error {
 	}
 	tmpName := tmp.Name()
 
+	// Track whether tmp was closed inside the write closure to avoid a
+	// double-close in the error path.
+	tmpClosed := false
 	writeErr := func() error {
 		enc := yaml.NewEncoder(tmp)
 		if err := enc.Encode(cfg); err != nil {
@@ -73,13 +76,26 @@ func Save(path string, cfg *Config) error {
 		if err := enc.Close(); err != nil {
 			return err
 		}
+		tmpClosed = true
 		return tmp.Close()
 	}()
 
 	if writeErr != nil {
-		tmp.Close()
+		if !tmpClosed {
+			tmp.Close()
+		}
 		os.Remove(tmpName)
 		return fmt.Errorf("could not write config: %w", writeErr)
+	}
+
+	// Preserve the existing file's permissions; fall back to 0600 for new files.
+	perm := os.FileMode(0600)
+	if info, err := os.Stat(path); err == nil {
+		perm = info.Mode().Perm()
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("could not set config file permissions: %w", err)
 	}
 
 	if err := os.Rename(tmpName, path); err != nil {

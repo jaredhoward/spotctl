@@ -124,13 +124,12 @@ Run 'spotctl sets' to see declared params for each set.`,
 			return err
 		}
 
-		// Collect only flags that were explicitly provided with a non-empty value.
-		// fs.Changed ensures we distinguish "not passed" from "passed empty",
-		// and the *v != "" guard preserves the required-param check for params
-		// that were explicitly passed as empty strings.
+		// Collect only flags that were explicitly provided. fs.Changed
+		// distinguishes "not passed" from "passed empty" so that an explicit
+		// empty value reaches ResolveParams instead of being silently dropped.
 		resolvedArgs := make(map[string]string, len(setArgs))
 		for k, v := range setArgs {
-			if fs.Changed(k) && *v != "" {
+			if fs.Changed(k) {
 				resolvedArgs[k] = *v
 			}
 		}

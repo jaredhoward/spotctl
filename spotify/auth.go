@@ -53,7 +53,7 @@ func refreshAccessToken(clientB64, refreshToken string) (RefreshResult, error) {
 	req.Header.Set("Authorization", "Basic "+clientB64)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: defaultHTTPTimeout}).Do(req)
 	if err != nil {
 		return RefreshResult{}, fmt.Errorf("token request failed: %w", err)
 	}
