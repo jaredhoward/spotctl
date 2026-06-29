@@ -1,6 +1,7 @@
 package spotify
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,7 +46,7 @@ func refreshAccessToken(clientB64, refreshToken string) (RefreshResult, error) {
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
 
-	req, err := http.NewRequest(http.MethodPost, URLToken, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, URLToken, strings.NewReader(data.Encode()))
 	if err != nil {
 		return RefreshResult{}, fmt.Errorf("could not create token request: %w", err)
 	}

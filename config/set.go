@@ -53,6 +53,10 @@ func (s *Set) ResolveParams(args map[string]string) (map[string]string, error) {
 			resolved[name] = decl.Default
 		} else if decl.Required {
 			return nil, fmt.Errorf("missing required arg %q", name)
+		} else {
+			// Optional param with no default and not required: resolve to ""
+			// so any {{ name }} placeholder in command params does not error.
+			resolved[name] = ""
 		}
 	}
 	return resolved, nil

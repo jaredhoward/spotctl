@@ -81,6 +81,32 @@ func newClientFromConfig() (*spotify.Client, error) {
 	return client, err
 }
 
+// newClientFromCfg refreshes the access token for an already-loaded config
+// and returns a ready-to-use Spotify client. Use this when the config has
+// already been loaded (e.g. to look up a set) to avoid a second file read.
+func newClientFromCfg(cfg *config.Config) (*spotify.Client, error) {
+	result, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
+	if err != nil {
+		if errors.Is(err, spotify.ErrInvalidGrant) {
+			cfg.RefreshToken = ""
+			if saveErr := config.Save(configPath, cfg); saveErr != nil {
+				return nil, fmt.Errorf("refresh token expired and could not be cleared from config: %w", saveErr)
+			}
+			return nil, fmt.Errorf("your Spotify sign-in has expired, please run 'spotctl setup' to reauthorize: %w", err)
+		}
+		return nil, fmt.Errorf("failed to refresh token: %w", err)
+	}
+
+	if result.NewRefreshToken != "" && result.NewRefreshToken != cfg.RefreshToken {
+		cfg.RefreshToken = result.NewRefreshToken
+		if saveErr := config.Save(configPath, cfg); saveErr != nil {
+			return nil, fmt.Errorf("could not save rotated refresh token: %w", saveErr)
+		}
+	}
+
+	return newSpotifyClient(result.AccessToken), nil
+}
+
 func init() {
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", config.DefaultConfigPath, "path to config file")
 	rootCmd.AddCommand(versionCmd)

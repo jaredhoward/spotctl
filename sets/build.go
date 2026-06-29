@@ -12,7 +12,7 @@ import (
 // the current nesting level used to enforce MaxSetDepth. args supplies
 // caller-provided parameter values which are merged with set-level defaults.
 func Build(name string, set config.Set, cfg *config.Config, depth int, args map[string]string) (*RunSet, error) {
-	if depth >= MaxSetDepth {
+	if depth > MaxSetDepth {
 		return nil, &DepthExceededError{Max: MaxSetDepth}
 	}
 

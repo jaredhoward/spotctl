@@ -86,6 +86,9 @@ Run 'spotctl sets' to see declared params for each set.`,
 				configPath = args[i+1]
 				i++
 			case len(args[i]) >= 9 && args[i][:9] == "--config=":
+				if args[i][9:] == "" {
+					return fmt.Errorf("--config requires a non-empty path")
+				}
 				configPath = args[i][9:]
 			default:
 				remaining = append(remaining, args[i])
@@ -121,10 +124,13 @@ Run 'spotctl sets' to see declared params for each set.`,
 			return err
 		}
 
-		// Collect only flags that were explicitly provided.
+		// Collect only flags that were explicitly provided with a non-empty value.
+		// fs.Changed ensures we distinguish "not passed" from "passed empty",
+		// and the *v != "" guard preserves the required-param check for params
+		// that were explicitly passed as empty strings.
 		resolvedArgs := make(map[string]string, len(setArgs))
 		for k, v := range setArgs {
-			if fs.Changed(k) {
+			if fs.Changed(k) && *v != "" {
 				resolvedArgs[k] = *v
 			}
 		}
@@ -134,7 +140,7 @@ Run 'spotctl sets' to see declared params for each set.`,
 			return err
 		}
 
-		client, err := newClientFromConfig()
+		client, err := newClientFromCfg(cfg)
 		if err != nil {
 			return err
 		}

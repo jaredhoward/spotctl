@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -56,17 +57,36 @@ func Load(path string) (*Config, error) {
 }
 
 func Save(path string, cfg *Config) error {
-	f, err := os.Create(path)
+	// Write to a sibling temp file and rename on success so a partial write
+	// never destroys the existing config.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".spotctl-config-*.yaml")
 	if err != nil {
-		return fmt.Errorf("could not create config file: %w", err)
+		return fmt.Errorf("could not create temp config file: %w", err)
 	}
-	defer f.Close()
+	tmpName := tmp.Name()
 
-	enc := yaml.NewEncoder(f)
-	if err := enc.Encode(cfg); err != nil {
-		return err
+	writeErr := func() error {
+		enc := yaml.NewEncoder(tmp)
+		if err := enc.Encode(cfg); err != nil {
+			return err
+		}
+		if err := enc.Close(); err != nil {
+			return err
+		}
+		return tmp.Close()
+	}()
+
+	if writeErr != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("could not write config: %w", writeErr)
 	}
-	return enc.Close()
+
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("could not save config file: %w", err)
+	}
+	return nil
 }
 
 func (c *Config) ClientB64() string {
