@@ -48,11 +48,20 @@ func (s *Set) ResolveParams(args map[string]string) (map[string]string, error) {
 	resolved := make(map[string]string, len(s.Params))
 	for name, decl := range s.Params {
 		if val, ok := args[name]; ok {
+			if val == "" && decl.Required {
+				return nil, fmt.Errorf("missing required arg %q", name)
+			}
 			resolved[name] = val
 		} else if decl.Default != "" {
 			resolved[name] = decl.Default
 		} else if decl.Required {
 			return nil, fmt.Errorf("missing required arg %q", name)
+		} else {
+			// Optional param with no default and not required: resolve to ""
+			// so any {{ name }} placeholder in command params does not error.
+			// Undeclared placeholders (typos) are unaffected since they never
+			// appear in s.Params and so are never added here.
+			resolved[name] = ""
 		}
 	}
 	return resolved, nil

@@ -57,6 +57,15 @@ func Load(path string) (*Config, error) {
 }
 
 func Save(path string, cfg *Config) error {
+	// Capture the existing file's permissions before writing; fall back to
+	// 0600 for new files. Applied after the rename so the temp file never
+	// carries more permissive bits than its own 0600 default while it's
+	// visible under its temp name.
+	perm := os.FileMode(0600)
+	if info, err := os.Stat(path); err == nil {
+		perm = info.Mode().Perm()
+	}
+
 	// Write to a sibling temp file and rename on success so a partial write
 	// never destroys the existing config.
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".spotctl-config-*.yaml")
@@ -66,7 +75,8 @@ func Save(path string, cfg *Config) error {
 	tmpName := tmp.Name()
 
 	// Track whether tmp was closed inside the write closure to avoid a
-	// double-close in the error path.
+	// double-close in the error path. Only set after Close() succeeds, so a
+	// failed Close still falls through to the cleanup close below.
 	tmpClosed := false
 	writeErr := func() error {
 		enc := yaml.NewEncoder(tmp)
@@ -76,8 +86,11 @@ func Save(path string, cfg *Config) error {
 		if err := enc.Close(); err != nil {
 			return err
 		}
+		if err := tmp.Close(); err != nil {
+			return err
+		}
 		tmpClosed = true
-		return tmp.Close()
+		return nil
 	}()
 
 	if writeErr != nil {
@@ -88,19 +101,15 @@ func Save(path string, cfg *Config) error {
 		return fmt.Errorf("could not write config: %w", writeErr)
 	}
 
-	// Preserve the existing file's permissions; fall back to 0600 for new files.
-	perm := os.FileMode(0600)
-	if info, err := os.Stat(path); err == nil {
-		perm = info.Mode().Perm()
-	}
-	if err := os.Chmod(tmpName, perm); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("could not set config file permissions: %w", err)
-	}
-
 	if err := os.Rename(tmpName, path); err != nil {
 		os.Remove(tmpName)
 		return fmt.Errorf("could not save config file: %w", err)
+	}
+
+	if perm != 0600 {
+		if err := os.Chmod(path, perm); err != nil {
+			return fmt.Errorf("could not set config file permissions: %w", err)
+		}
 	}
 	return nil
 }
