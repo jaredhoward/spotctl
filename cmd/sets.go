@@ -85,7 +85,7 @@ Run 'spotctl sets' to see declared params for each set.`,
 			case args[i] == "--config" && i+1 < len(args):
 				configPath = args[i+1]
 				i++
-			case len(args[i]) > 9 && args[i][:9] == "--config=":
+			case len(args[i]) >= 9 && args[i][:9] == "--config=":
 				configPath = args[i][9:]
 			default:
 				remaining = append(remaining, args[i])
@@ -124,7 +124,7 @@ Run 'spotctl sets' to see declared params for each set.`,
 		// Collect only flags that were explicitly provided.
 		resolvedArgs := make(map[string]string, len(setArgs))
 		for k, v := range setArgs {
-			if *v != "" {
+			if fs.Changed(k) {
 				resolvedArgs[k] = *v
 			}
 		}

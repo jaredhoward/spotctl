@@ -62,7 +62,11 @@ func Save(path string, cfg *Config) error {
 	}
 	defer f.Close()
 
-	return yaml.NewEncoder(f).Encode(cfg)
+	enc := yaml.NewEncoder(f)
+	if err := enc.Encode(cfg); err != nil {
+		return err
+	}
+	return enc.Close()
 }
 
 func (c *Config) ClientB64() string {

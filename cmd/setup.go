@@ -136,6 +136,11 @@ func oauthFlow(clientID, clientSecret, redirectURI string, stdin io.Reader, opts
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("token exchange returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
 	var result struct {
 		RefreshToken string `json:"refresh_token"`
 	}

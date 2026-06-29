@@ -17,14 +17,9 @@ var devicesCmd = &cobra.Command{
 }
 
 func runDevices(cmd *cobra.Command, args []string) error {
-	client, err := newClientFromConfig()
+	cfg, client, err := loadConfigWithClient()
 	if err != nil {
 		return err
-	}
-
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
 	}
 	if cfg.DeviceNames == nil {
 		cfg.DeviceNames = map[string]string{}

@@ -249,6 +249,34 @@ func (p *CommandParams) ForwardedArgs() map[string]string {
 	return out
 }
 
+// ResolveContextURI builds a Spotify context URI from the shorthand fields
+// (URI, PlaylistID, TrackID, AlbumID, ArtistID). At most one may be set;
+// returns an error if more than one is non-empty.
+func (p *CommandParams) ResolveContextURI() (string, error) {
+	count := 0
+	for _, v := range []string{p.URI, p.PlaylistID, p.TrackID, p.AlbumID, p.ArtistID} {
+		if v != "" {
+			count++
+		}
+	}
+	if count > 1 {
+		return "", fmt.Errorf("only one of uri/playlist/track/album/artist may be set")
+	}
+	switch {
+	case p.URI != "":
+		return p.URI, nil
+	case p.PlaylistID != "":
+		return "spotify:playlist:" + p.PlaylistID, nil
+	case p.TrackID != "":
+		return "spotify:track:" + p.TrackID, nil
+	case p.AlbumID != "":
+		return "spotify:album:" + p.AlbumID, nil
+	case p.ArtistID != "":
+		return "spotify:artist:" + p.ArtistID, nil
+	}
+	return "", nil
+}
+
 // ShuffleEnabled returns the value of Enabled, defaulting to true.
 func (p *CommandParams) ShuffleEnabled() bool {
 	if p.Enabled == nil {
@@ -309,10 +337,22 @@ func interpolateString(s string, data map[string]string) (string, error) {
 	if s == "" || !strings.Contains(s, "{{") {
 		return s, nil
 	}
-	return placeholderExpr.ReplaceAllStringFunc(s, func(match string) string {
+	var firstErr error
+	result := placeholderExpr.ReplaceAllStringFunc(s, func(match string) string {
 		key := strings.TrimSpace(placeholderExpr.FindStringSubmatch(match)[1])
-		return data[key]
-	}), nil
+		val, ok := data[key]
+		if !ok {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("placeholder %q has no value (declare it in params)", key)
+			}
+			return ""
+		}
+		return val
+	})
+	if firstErr != nil {
+		return "", firstErr
+	}
+	return result, nil
 }
 
 // InterpolateParams returns a copy of CommandParams with all string fields

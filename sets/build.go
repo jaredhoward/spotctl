@@ -12,7 +12,7 @@ import (
 // the current nesting level used to enforce MaxSetDepth. args supplies
 // caller-provided parameter values which are merged with set-level defaults.
 func Build(name string, set config.Set, cfg *config.Config, depth int, args map[string]string) (*RunSet, error) {
-	if depth > MaxSetDepth {
+	if depth >= MaxSetDepth {
 		return nil, &DepthExceededError{Max: MaxSetDepth}
 	}
 
@@ -68,7 +68,7 @@ func Build(name string, set config.Set, cfg *config.Config, depth int, args map[
 func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth int) (spotify.Action, error) {
 	switch cmd.Action {
 	case "play":
-		uri, err := resolveURI(cmd.Params)
+		uri, err := cmd.Params.ResolveContextURI()
 		if err != nil {
 			return nil, err
 		}
@@ -115,28 +115,3 @@ func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth 
 	}
 }
 
-// resolveURI builds a Spotify context URI from CommandParams shorthand fields.
-func resolveURI(p config.CommandParams) (string, error) {
-	count := 0
-	for _, v := range []string{p.URI, p.PlaylistID, p.TrackID, p.AlbumID, p.ArtistID} {
-		if v != "" {
-			count++
-		}
-	}
-	if count > 1 {
-		return "", fmt.Errorf("only one of uri/playlist/track/album/artist may be set in params")
-	}
-	switch {
-	case p.URI != "":
-		return p.URI, nil
-	case p.PlaylistID != "":
-		return "spotify:playlist:" + p.PlaylistID, nil
-	case p.TrackID != "":
-		return "spotify:track:" + p.TrackID, nil
-	case p.AlbumID != "":
-		return "spotify:album:" + p.AlbumID, nil
-	case p.ArtistID != "":
-		return "spotify:artist:" + p.ArtistID, nil
-	}
-	return "", nil
-}

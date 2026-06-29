@@ -43,8 +43,8 @@ func TestNewClientFromConfig_TokenRefreshFailure(t *testing.T) {
 	}()
 
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) {
-		return "", errors.New("token refresh failed")
+	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+		return spotify.RefreshResult{}, errors.New("token refresh failed")
 	}
 
 	_, err := newClientFromConfig()
@@ -78,8 +78,8 @@ func TestNewClientFromConfig_InvalidGrantDiscardsToken(t *testing.T) {
 	}()
 
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "stale-refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) {
-		return "", fmt.Errorf("%w: token revoked", spotify.ErrInvalidGrant)
+	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+		return spotify.RefreshResult{}, fmt.Errorf("%w: token revoked", spotify.ErrInvalidGrant)
 	}
 
 	_, err := newClientFromConfig()

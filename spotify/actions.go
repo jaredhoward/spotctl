@@ -54,7 +54,7 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 		reqBody = bytes.NewReader(body)
 	}
 
-	req, err := http.NewRequest(http.MethodPut, playerURL(URLPlayer, "/play", p.DeviceID), reqBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, playerURL(URLPlayer, "/play", p.DeviceID), reqBody)
 	if err != nil {
 		return fmt.Errorf("could not create play request: %w", err)
 	}
@@ -103,8 +103,8 @@ type Pause struct {
 	DeviceID string
 }
 
-func (p *Pause) Dispatch(_ context.Context, c *Client) error {
-	req, err := http.NewRequest(http.MethodPut, playerURL(URLPlayer, "/pause", p.DeviceID), nil)
+func (p *Pause) Dispatch(ctx context.Context, c *Client) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, playerURL(URLPlayer, "/pause", p.DeviceID), nil)
 	if err != nil {
 		return fmt.Errorf("could not create pause request: %w", err)
 	}
@@ -131,7 +131,7 @@ func (n *Next) Dispatch(ctx context.Context, c *Client) error {
 	if state, err := c.GetCurrentPlayback(); err == nil {
 		n.priorState = state
 	}
-	req, err := http.NewRequest(http.MethodPost, playerURL(URLPlayer, "/next", n.DeviceID), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(URLPlayer, "/next", n.DeviceID), nil)
 	if err != nil {
 		return fmt.Errorf("could not create next request: %w", err)
 	}
@@ -165,7 +165,7 @@ func (p *Previous) Dispatch(ctx context.Context, c *Client) error {
 	if state, err := c.GetCurrentPlayback(); err == nil {
 		p.priorState = state
 	}
-	req, err := http.NewRequest(http.MethodPost, playerURL(URLPlayer, "/previous", p.DeviceID), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(URLPlayer, "/previous", p.DeviceID), nil)
 	if err != nil {
 		return fmt.Errorf("could not create previous request: %w", err)
 	}
@@ -193,12 +193,12 @@ type Shuffle struct {
 	Enabled  bool
 }
 
-func (s *Shuffle) Dispatch(_ context.Context, c *Client) error {
+func (s *Shuffle) Dispatch(ctx context.Context, c *Client) error {
 	params := url.Values{"state": {fmt.Sprintf("%t", s.Enabled)}}
 	if s.DeviceID != "" {
 		params.Set("device_id", s.DeviceID)
 	}
-	req, err := http.NewRequest(http.MethodPut, URLPlayer+"/shuffle?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer+"/shuffle?"+params.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("could not create shuffle request: %w", err)
 	}
@@ -220,12 +220,12 @@ type Repeat struct {
 	State    string // "off" | "track" | "context"
 }
 
-func (r *Repeat) Dispatch(_ context.Context, c *Client) error {
+func (r *Repeat) Dispatch(ctx context.Context, c *Client) error {
 	params := url.Values{"state": {r.State}}
 	if r.DeviceID != "" {
 		params.Set("device_id", r.DeviceID)
 	}
-	req, err := http.NewRequest(http.MethodPut, URLPlayer+"/repeat?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer+"/repeat?"+params.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("could not create repeat request: %w", err)
 	}
@@ -247,12 +247,12 @@ type Volume struct {
 	Level    int
 }
 
-func (v *Volume) Dispatch(_ context.Context, c *Client) error {
+func (v *Volume) Dispatch(ctx context.Context, c *Client) error {
 	params := url.Values{"volume_percent": {fmt.Sprintf("%d", v.Level)}}
 	if v.DeviceID != "" {
 		params.Set("device_id", v.DeviceID)
 	}
-	req, err := http.NewRequest(http.MethodPut, URLPlayer+"/volume?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer+"/volume?"+params.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("could not create volume request: %w", err)
 	}
@@ -283,7 +283,7 @@ type Transfer struct {
 	Play     bool
 }
 
-func (t *Transfer) Dispatch(_ context.Context, c *Client) error {
+func (t *Transfer) Dispatch(ctx context.Context, c *Client) error {
 	body, err := json.Marshal(map[string]interface{}{
 		"device_ids": []string{t.DeviceID},
 		"play":       t.Play,
@@ -292,7 +292,7 @@ func (t *Transfer) Dispatch(_ context.Context, c *Client) error {
 		return fmt.Errorf("could not marshal transfer request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPut, URLPlayer, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("could not create transfer request: %w", err)
 	}

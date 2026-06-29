@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/sets"
 	"github.com/jaredhoward/spotctl/spotify"
 	"github.com/spf13/cobra"
@@ -27,7 +28,7 @@ var playCmd = &cobra.Command{
 }
 
 func runPlay(cmd *cobra.Command, args []string) error {
-	contextURI, err := resolveURI(cmd, uri, playlistID, trackID, albumID, artistID)
+	contextURI, err := resolvePlayURI(cmd, uri, playlistID, trackID, albumID, artistID)
 	if err != nil {
 		return err
 	}
@@ -44,9 +45,9 @@ func runPlay(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resolveURI validates that at most one URI-type flag was set and builds the
-// full Spotify URI string from whichever shorthand flag was used.
-func resolveURI(cmd *cobra.Command, uri, playlistID, trackID, albumID, artistID string) (string, error) {
+// resolvePlayURI validates that at most one URI-type flag was set and builds
+// the full Spotify URI from whichever shorthand flag was used.
+func resolvePlayURI(cmd *cobra.Command, uri, playlistID, trackID, albumID, artistID string) (string, error) {
 	set := []string{}
 	if cmd.Flags().Changed("uri") {
 		set = append(set, "--uri")
@@ -66,19 +67,14 @@ func resolveURI(cmd *cobra.Command, uri, playlistID, trackID, albumID, artistID 
 	if len(set) > 1 {
 		return "", fmt.Errorf("only one of %v may be specified at a time", set)
 	}
-	switch {
-	case cmd.Flags().Changed("uri"):
-		return uri, nil
-	case cmd.Flags().Changed("playlist"):
-		return "spotify:playlist:" + playlistID, nil
-	case cmd.Flags().Changed("track"):
-		return "spotify:track:" + trackID, nil
-	case cmd.Flags().Changed("album"):
-		return "spotify:album:" + albumID, nil
-	case cmd.Flags().Changed("artist"):
-		return "spotify:artist:" + artistID, nil
+	p := config.CommandParams{
+		URI:        uri,
+		PlaylistID: playlistID,
+		TrackID:    trackID,
+		AlbumID:    albumID,
+		ArtistID:   artistID,
 	}
-	return "", nil
+	return p.ResolveContextURI()
 }
 
 // ---- pause / next / previous ------------------------------------------------

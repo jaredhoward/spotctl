@@ -321,14 +321,14 @@ func TestInterpolateParams(t *testing.T) {
 		}
 	})
 
-	t.Run("unknown key renders empty", func(t *testing.T) {
+	t.Run("unknown key returns error", func(t *testing.T) {
 		p := CommandParams{URI: "{{ missing }}"}
-		got, err := p.InterpolateParams(map[string]string{})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		_, err := p.InterpolateParams(map[string]string{})
+		if err == nil {
+			t.Fatal("expected error for unknown placeholder key")
 		}
-		if got.URI != "" {
-			t.Errorf("expected empty URI for missing key, got %q", got.URI)
+		if !strings.Contains(err.Error(), "missing") {
+			t.Errorf("expected error to mention key name, got %v", err)
 		}
 	})
 

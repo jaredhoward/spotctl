@@ -28,12 +28,43 @@ func TestRefreshAccessTokenSuccess(t *testing.T) {
 	defer server.Close()
 
 	URLToken = server.URL
-	accessToken, err := RefreshAccessToken(base64.StdEncoding.EncodeToString([]byte("id:secret")), "refresh-token")
+	result, err := RefreshAccessToken(base64.StdEncoding.EncodeToString([]byte("id:secret")), "refresh-token")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if accessToken != "access-token" {
-		t.Fatalf("expected access token %q, got %q", "access-token", accessToken)
+	if result.AccessToken != "access-token" {
+		t.Fatalf("expected access token %q, got %q", "access-token", result.AccessToken)
+	}
+	if result.NewRefreshToken != "" {
+		t.Fatalf("expected no rotated refresh token, got %q", result.NewRefreshToken)
+	}
+}
+
+func TestRefreshAccessTokenRotation(t *testing.T) {
+	oldURL := URLToken
+	t.Cleanup(func() { URLToken = oldURL })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(TokenResponse{
+			AccessToken:  "access-token",
+			TokenType:    "Bearer",
+			ExpiresIn:    3600,
+			RefreshToken: "new-refresh-token",
+		})
+	}))
+	defer server.Close()
+
+	URLToken = server.URL
+	result, err := RefreshAccessToken("clientb64", "old-refresh-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AccessToken != "access-token" {
+		t.Fatalf("expected access token %q, got %q", "access-token", result.AccessToken)
+	}
+	if result.NewRefreshToken != "new-refresh-token" {
+		t.Fatalf("expected rotated refresh token %q, got %q", "new-refresh-token", result.NewRefreshToken)
 	}
 }
 

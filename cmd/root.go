@@ -39,15 +39,17 @@ func executeRoot() error {
 	return rootCmd.Execute()
 }
 
-// newClientFromConfig loads config, refreshes the access token, and returns
-// a ready-to-use Spotify client.
-func newClientFromConfig() (*spotify.Client, error) {
+// loadConfigWithClient loads config, refreshes the access token, and returns
+// both the loaded config and a ready-to-use Spotify client. Commands that need
+// the config after authentication (e.g. devices) call this directly to avoid
+// loading the config file a second time.
+func loadConfigWithClient() (*config.Config, *spotify.Client, error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
+		return nil, nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	accessToken, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
+	result, err := spotify.RefreshAccessToken(cfg.ClientB64(), cfg.RefreshToken)
 	if err != nil {
 		if errors.Is(err, spotify.ErrInvalidGrant) {
 			// The refresh token itself is no longer valid (e.g. it has hit
@@ -55,14 +57,28 @@ func newClientFromConfig() (*spotify.Client, error) {
 			// the stored token and send the user back through sign-in.
 			cfg.RefreshToken = ""
 			if saveErr := config.Save(configPath, cfg); saveErr != nil {
-				return nil, fmt.Errorf("refresh token expired and could not be cleared from config: %w", saveErr)
+				return nil, nil, fmt.Errorf("refresh token expired and could not be cleared from config: %w", saveErr)
 			}
-			return nil, fmt.Errorf("your Spotify sign-in has expired, please run 'spotctl setup' to reauthorize: %w", err)
+			return nil, nil, fmt.Errorf("your Spotify sign-in has expired, please run 'spotctl setup' to reauthorize: %w", err)
 		}
-		return nil, fmt.Errorf("failed to refresh token: %w", err)
+		return nil, nil, fmt.Errorf("failed to refresh token: %w", err)
 	}
 
-	return newSpotifyClient(accessToken), nil
+	if result.NewRefreshToken != "" && result.NewRefreshToken != cfg.RefreshToken {
+		cfg.RefreshToken = result.NewRefreshToken
+		if saveErr := config.Save(configPath, cfg); saveErr != nil {
+			return nil, nil, fmt.Errorf("could not save rotated refresh token: %w", saveErr)
+		}
+	}
+
+	return cfg, newSpotifyClient(result.AccessToken), nil
+}
+
+// newClientFromConfig loads config, refreshes the access token, and returns
+// a ready-to-use Spotify client.
+func newClientFromConfig() (*spotify.Client, error) {
+	_, client, err := loadConfigWithClient()
+	return client, err
 }
 
 func init() {

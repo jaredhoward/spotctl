@@ -58,7 +58,9 @@ func wireClient(t *testing.T, srv *httptest.Server) (cleanup func()) {
 		c.SetHTTPClient(srv.Client())
 		return c
 	}
-	spotify.RefreshAccessToken = func(_, _ string) (string, error) { return "token", nil }
+	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+		return spotify.RefreshResult{AccessToken: "token"}, nil
+	}
 
 	restore := func() {
 		spotify.URLPlayer = oldURLPlayer
