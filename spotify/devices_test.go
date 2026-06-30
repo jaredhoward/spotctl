@@ -9,9 +9,6 @@ import (
 )
 
 func TestGetDevicesSuccess(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/devices" {
 			t.Fatalf("expected GET /devices, got %s %s", r.Method, r.URL.Path)
@@ -21,8 +18,7 @@ func TestGetDevicesSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	URLPlayer = server.URL
-	client := &Client{accessToken: "token", httpClient: server.Client()}
+	client := &Client{accessToken: "token", httpClient: server.Client(), urlPlayer: server.URL}
 	devices, err := client.GetDevices(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -33,33 +29,25 @@ func TestGetDevicesSuccess(t *testing.T) {
 }
 
 func TestGetDevicesError(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 
-	URLPlayer = server.URL
-	client := &Client{accessToken: "token", httpClient: server.Client()}
+	client := &Client{accessToken: "token", httpClient: server.Client(), urlPlayer: server.URL}
 	if _, err := client.GetDevices(context.Background()); err == nil {
 		t.Fatal("expected error for non-200 response")
 	}
 }
 
 func TestGetDevicesDecodeError(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte("invalid json"))
 	}))
 	defer server.Close()
 
-	URLPlayer = server.URL
-	client := &Client{accessToken: "token", httpClient: server.Client()}
+	client := &Client{accessToken: "token", httpClient: server.Client(), urlPlayer: server.URL}
 	if _, err := client.GetDevices(context.Background()); err == nil {
 		t.Fatal("expected decode error")
 	}

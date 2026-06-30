@@ -12,9 +12,6 @@ import (
 )
 
 func TestRefreshAccessTokenSuccess(t *testing.T) {
-	oldURL := URLToken
-	t.Cleanup(func() { URLToken = oldURL })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", r.Method)
@@ -28,8 +25,7 @@ func TestRefreshAccessTokenSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	URLToken = server.URL
-	result, err := RefreshAccessToken(context.Background(), base64.StdEncoding.EncodeToString([]byte("id:secret")), "refresh-token")
+	result, err := RefreshAccessToken(context.Background(), base64.StdEncoding.EncodeToString([]byte("id:secret")), "refresh-token", server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,9 +38,6 @@ func TestRefreshAccessTokenSuccess(t *testing.T) {
 }
 
 func TestRefreshAccessTokenRotation(t *testing.T) {
-	oldURL := URLToken
-	t.Cleanup(func() { URLToken = oldURL })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(tokenResponse{
@@ -56,8 +49,7 @@ func TestRefreshAccessTokenRotation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	URLToken = server.URL
-	result, err := RefreshAccessToken(context.Background(), "clientb64", "old-refresh-token")
+	result, err := RefreshAccessToken(context.Background(), "clientb64", "old-refresh-token", server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,48 +62,36 @@ func TestRefreshAccessTokenRotation(t *testing.T) {
 }
 
 func TestRefreshAccessTokenBadResponse(t *testing.T) {
-	oldURL := URLToken
-	t.Cleanup(func() { URLToken = oldURL })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer server.Close()
 
-	URLToken = server.URL
-	if _, err := RefreshAccessToken(context.Background(), "foo", "bar"); err == nil {
+	if _, err := RefreshAccessToken(context.Background(), "foo", "bar", server.URL); err == nil {
 		t.Fatal("expected error for bad token response")
 	}
 }
 
 func TestRefreshAccessTokenEmptyToken(t *testing.T) {
-	oldURL := URLToken
-	t.Cleanup(func() { URLToken = oldURL })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(tokenResponse{AccessToken: "", TokenType: "Bearer", ExpiresIn: 3600})
 	}))
 	defer server.Close()
 
-	URLToken = server.URL
-	if _, err := RefreshAccessToken(context.Background(), "foo", "bar"); err == nil {
+	if _, err := RefreshAccessToken(context.Background(), "foo", "bar", server.URL); err == nil {
 		t.Fatal("expected error for empty access token")
 	}
 }
 
 func TestRefreshAccessTokenDecodeError(t *testing.T) {
-	oldURL := URLToken
-	t.Cleanup(func() { URLToken = oldURL })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte("not json"))
 	}))
 	defer server.Close()
 
-	URLToken = server.URL
-	if _, err := RefreshAccessToken(context.Background(), "foo", "bar"); err == nil {
+	if _, err := RefreshAccessToken(context.Background(), "foo", "bar", server.URL); err == nil {
 		t.Fatal("expected error for invalid JSON response")
 	}
 }
@@ -119,17 +99,13 @@ func TestRefreshAccessTokenDecodeError(t *testing.T) {
 // TestRefreshAccessTokenNetworkError covers the branch where the HTTP request
 // itself fails (connection refused / network error), not just a bad status.
 func TestRefreshAccessTokenNetworkError(t *testing.T) {
-	oldURL := URLToken
-	t.Cleanup(func() { URLToken = oldURL })
-
 	// Start a server just to get a valid address, then close it immediately so
 	// any connection attempt fails with a network error.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	addr := server.URL
 	server.Close()
 
-	URLToken = addr
-	if _, err := RefreshAccessToken(context.Background(), "clientb64", "refresh"); err == nil {
+	if _, err := RefreshAccessToken(context.Background(), "clientb64", "refresh", addr); err == nil {
 		t.Fatal("expected network error when server is closed")
 	}
 }
@@ -139,9 +115,6 @@ func TestRefreshAccessTokenNetworkError(t *testing.T) {
 // Callers rely on errors.Is(err, ErrInvalidGrant) to decide whether to
 // discard the token and force re-authorization rather than retry.
 func TestRefreshAccessTokenInvalidGrant(t *testing.T) {
-	oldURL := URLToken
-	t.Cleanup(func() { URLToken = oldURL })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -152,8 +125,7 @@ func TestRefreshAccessTokenInvalidGrant(t *testing.T) {
 	}))
 	defer server.Close()
 
-	URLToken = server.URL
-	_, err := RefreshAccessToken(context.Background(), "foo", "bar")
+	_, err := RefreshAccessToken(context.Background(), "foo", "bar", server.URL)
 	if err == nil {
 		t.Fatal("expected invalid_grant error")
 	}
@@ -166,9 +138,6 @@ func TestRefreshAccessTokenInvalidGrant(t *testing.T) {
 // invalid_grant (e.g. a malformed request) does NOT get classified as
 // ErrInvalidGrant, so callers won't discard a token unnecessarily.
 func TestRefreshAccessTokenOtherBadRequest(t *testing.T) {
-	oldURL := URLToken
-	t.Cleanup(func() { URLToken = oldURL })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -179,8 +148,7 @@ func TestRefreshAccessTokenOtherBadRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	URLToken = server.URL
-	_, err := RefreshAccessToken(context.Background(), "foo", "bar")
+	_, err := RefreshAccessToken(context.Background(), "foo", "bar", server.URL)
 	if err == nil {
 		t.Fatal("expected an error")
 	}

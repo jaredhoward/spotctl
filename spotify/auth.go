@@ -39,14 +39,16 @@ type tokenErrorResponse struct {
 	ErrorDescription string `json:"error_description"`
 }
 
-var RefreshAccessToken = refreshAccessToken
+type refreshFunc func(ctx context.Context, clientB64, refreshToken, tokenURL string) (RefreshResult, error)
 
-func refreshAccessToken(ctx context.Context, clientB64, refreshToken string) (RefreshResult, error) {
+var RefreshAccessToken refreshFunc = refreshAccessToken
+
+func refreshAccessToken(ctx context.Context, clientB64, refreshToken, tokenURL string) (RefreshResult, error) {
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, URLToken, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return RefreshResult{}, fmt.Errorf("failed to create token request: %w", err)
 	}

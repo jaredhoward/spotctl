@@ -23,7 +23,7 @@ type DevicesResponse struct {
 
 func (c *Client) GetDevices(ctx context.Context) ([]Device, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		fmt.Sprintf("%s/devices", URLPlayer),
+		fmt.Sprintf("%s/devices", c.urlPlayer),
 		nil,
 	)
 	if err != nil {

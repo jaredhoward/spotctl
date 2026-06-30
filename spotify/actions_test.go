@@ -25,9 +25,6 @@ func multiHandler(t *testing.T, routes map[string]http.HandlerFunc) http.Handler
 }
 
 func TestActions(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
-
 	snapshotState, _ := json.Marshal(PlaybackState{Item: &Track{URI: "spotify:track:prior"}})
 	snapshotHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -303,8 +300,7 @@ func TestActions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(multiHandler(t, tt.routes))
 			defer server.Close()
-			URLPlayer = server.URL
-			client := &Client{accessToken: "t", httpClient: server.Client()}
+			client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
 			if err := tt.action.Dispatch(context.Background(), client); err != nil {
 				t.Fatal(err)
 			}
@@ -313,8 +309,6 @@ func TestActions(t *testing.T) {
 }
 
 func TestActions_ErrorResponse(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
 
 	snapshotOK := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -356,8 +350,7 @@ func TestActions_ErrorResponse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(multiHandler(t, tt.routes))
 			defer server.Close()
-			URLPlayer = server.URL
-			client := &Client{accessToken: "t", httpClient: server.Client()}
+			client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
 			if err := tt.action.Dispatch(context.Background(), client); err == nil {
 				t.Fatal("expected error for non-2xx response")
 			}
@@ -643,14 +636,10 @@ func TestPrevious_ConfirmedNilState(t *testing.T) {
 }
 
 // TestDispatch_RequestCreationError exercises the error path returned when
-// URLPlayer is set to a value that makes http.NewRequestWithContext fail
+// urlPlayer is set to a value that makes http.NewRequestWithContext fail
 // (a URL containing a null byte is rejected by the net/url parser).
 func TestDispatch_RequestCreationError(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
-	URLPlayer = "http://\x00invalid"
-
-	client := &Client{accessToken: "t", httpClient: http.DefaultClient}
+	client := &Client{accessToken: "t", httpClient: http.DefaultClient, urlPlayer: "http://\x00invalid"}
 	ctx := context.Background()
 
 	actions := []struct {
@@ -679,9 +668,6 @@ func TestDispatch_RequestCreationError(t *testing.T) {
 // TestSnapshotDispatch verifies that Next, Previous, and Play (no ContextURI)
 // capture priorState during Dispatch and use it correctly in Confirmed.
 func TestSnapshotDispatch(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
-
 	priorPlayback := PlaybackState{
 		IsPlaying: true,
 		Device:    Device{ID: "prior-device"},
@@ -699,9 +685,9 @@ func TestSnapshotDispatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	URLPlayer = srv.URL
 	client := NewClient("token")
 	client.SetHTTPClient(srv.Client())
+	client.urlPlayer = srv.URL
 
 	t.Run("next captures priorState", func(t *testing.T) {
 		n := &Next{DeviceID: "device"}

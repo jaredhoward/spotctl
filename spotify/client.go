@@ -16,17 +16,23 @@ const (
 type Client struct {
 	accessToken string
 	httpClient  *http.Client
+	urlPlayer   string
 }
 
 func NewClient(accessToken string) *Client {
 	return &Client{
 		accessToken: accessToken,
 		httpClient:  &http.Client{Timeout: defaultHTTPTimeout},
+		urlPlayer:   "https://api.spotify.com/v1/me/player",
 	}
 }
 
 func (c *Client) SetHTTPClient(client *http.Client) {
 	c.httpClient = client
+}
+
+func (c *Client) SetPlayerURL(url string) {
+	c.urlPlayer = url
 }
 
 // playerURL builds a player endpoint URL, appending device_id only when non-empty.

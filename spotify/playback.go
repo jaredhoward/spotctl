@@ -36,7 +36,7 @@ type PlaybackState struct {
 }
 
 func (c *Client) GetCurrentPlayback(ctx context.Context) (*PlaybackState, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, URLPlayer, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.urlPlayer, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create current playback request: %w", err)
 	}

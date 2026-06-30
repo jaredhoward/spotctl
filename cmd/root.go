@@ -57,7 +57,7 @@ func cmdCtx(cmd *cobra.Command) context.Context {
 // rotation, and returns a ready-to-use Spotify client. It is the single
 // implementation shared by loadConfigWithClient and newClientFromCfg.
 func exchangeAndSave(ctx context.Context, cfg *config.Config) (*spotify.Client, error) {
-	result, err := spotify.RefreshAccessToken(ctx, cfg.ClientB64(), cfg.RefreshToken)
+	result, err := spotify.RefreshAccessToken(ctx, cfg.ClientB64(), cfg.RefreshToken, spotify.URLToken)
 	if err != nil {
 		if errors.Is(err, spotify.ErrInvalidGrant) {
 			// The refresh token itself is no longer valid (e.g. it has hit

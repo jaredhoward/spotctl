@@ -35,6 +35,7 @@ func newClient(t *testing.T, srv *httptest.Server) *spotify.Client {
 	t.Helper()
 	c := spotify.NewClient("test-token")
 	c.SetHTTPClient(srv.Client())
+	c.SetPlayerURL(srv.URL)
 	return c
 }
 
@@ -48,13 +49,6 @@ func newCfg(s map[string]config.Set) *config.Config {
 func stateBody(state spotify.PlaybackState) []byte {
 	b, _ := json.Marshal(state)
 	return b
-}
-
-func useTestServer(t *testing.T, srv *httptest.Server) {
-	t.Helper()
-	original := spotify.URLPlayer
-	spotify.URLPlayer = srv.URL
-	t.Cleanup(func() { spotify.URLPlayer = original })
 }
 
 func readBody(r *http.Request) string {
@@ -76,7 +70,6 @@ func TestBuild_Play_Playlist(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{PlaylistID: "pl123"}, Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
@@ -100,7 +93,6 @@ func TestBuild_Play_Track(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{TrackID: "tr456"}, Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
@@ -124,7 +116,6 @@ func TestBuild_Play_Album(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{AlbumID: "al789"}, Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
@@ -148,7 +139,6 @@ func TestBuild_Play_Artist(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{ArtistID: "ar999"}, Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
@@ -184,7 +174,6 @@ func TestBuild_SetLevelDeviceApplied(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{DeviceID: "set-device", Commands: []config.Command{{Action: "pause", Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
@@ -208,7 +197,6 @@ func TestBuild_CommandDeviceOverridesSet(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{
 		DeviceID: "set-device",
@@ -235,7 +223,6 @@ func TestRunSet_PlayNoConfirm(t *testing.T) {
 		"PUT /play": func(w http.ResponseWriter, r *http.Request) { playCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{{Action: "play", DeviceID: "d1", Confirm: new(false)}}}
 	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
@@ -263,7 +250,6 @@ func TestRunSet_PlayAndConfirm(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{
 		{Action: "play", DeviceID: "d1", Confirm: new(true), Timeout: "5s"},
@@ -290,7 +276,6 @@ func TestRunSet_ConfirmTimeout_Continue(t *testing.T) {
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { pauseCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{
 		OnTimeout: config.OnFailureContinue,
@@ -319,7 +304,6 @@ func TestRunSet_ConfirmTimeout_Fail(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{
 		{Action: "play", DeviceID: "d1", Confirm: new(true), Timeout: "50ms", OnTimeout: config.OnFailureFail},
@@ -344,7 +328,6 @@ func TestRunSet_ConfirmTimeout_SkipRemaining(t *testing.T) {
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { pauseCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{Commands: []config.Command{
 		{Action: "play", DeviceID: "d1", Confirm: new(true), Timeout: "50ms", OnTimeout: config.OnFailureSkipRemaining},
@@ -370,7 +353,6 @@ func TestRunSet_CommandError_Continue(t *testing.T) {
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { pauseCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{
 		OnError: config.OnFailureContinue,
@@ -397,7 +379,6 @@ func TestRunSet_CommandError_Fail(t *testing.T) {
 		"POST /next": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{
 		OnError:  config.OnFailureFail,
@@ -421,7 +402,6 @@ func TestRunSet_CommandError_SkipRemaining(t *testing.T) {
 		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { pauseCalled = true; w.WriteHeader(http.StatusNoContent) },
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{
 		OnError: config.OnFailureSkipRemaining,
@@ -448,7 +428,6 @@ func TestRunSet_CommandOverridesSetDefault(t *testing.T) {
 		"POST /next": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	set := config.Set{
 		OnError:  config.OnFailureContinue,
@@ -504,7 +483,6 @@ func TestRunSet_Composable(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	inner := config.Set{Commands: []config.Command{{Action: "pause", DeviceID: "d1"}}}
 	outer := config.Set{Commands: []config.Command{
@@ -658,7 +636,6 @@ func TestExecute_ConfirmPollError(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	a := &spotify.Play{DeviceID: "d1"}
 	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
@@ -768,7 +745,6 @@ func TestExecute_DefaultPollIntervalAndTimeout(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	a := &spotify.Play{DeviceID: "d1"}
 	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
@@ -791,7 +767,6 @@ func TestExecute_ContextCanceled(t *testing.T) {
 		},
 	})
 	defer srv.Close()
-	useTestServer(t, srv)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	// Cancel immediately so the first poll loop iteration hits ctx.Done().

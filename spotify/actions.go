@@ -54,7 +54,7 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 		reqBody = bytes.NewReader(body)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, playerURL(URLPlayer, "/play", p.DeviceID), reqBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, playerURL(c.urlPlayer, "/play", p.DeviceID), reqBody)
 	if err != nil {
 		return fmt.Errorf("failed to create play request: %w", err)
 	}
@@ -104,7 +104,7 @@ type Pause struct {
 }
 
 func (p *Pause) Dispatch(ctx context.Context, c *Client) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, playerURL(URLPlayer, "/pause", p.DeviceID), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, playerURL(c.urlPlayer, "/pause", p.DeviceID), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create pause request: %w", err)
 	}
@@ -144,7 +144,7 @@ func (n *Next) Dispatch(ctx context.Context, c *Client) error {
 	if state, err := c.GetCurrentPlayback(ctx); err == nil {
 		n.priorState = state
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(URLPlayer, "/next", n.DeviceID), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(c.urlPlayer, "/next", n.DeviceID), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create next request: %w", err)
 	}
@@ -168,7 +168,7 @@ func (p *Previous) Dispatch(ctx context.Context, c *Client) error {
 	if state, err := c.GetCurrentPlayback(ctx); err == nil {
 		p.priorState = state
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(URLPlayer, "/previous", p.DeviceID), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(c.urlPlayer, "/previous", p.DeviceID), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create previous request: %w", err)
 	}
@@ -191,7 +191,7 @@ func (s *Shuffle) Dispatch(ctx context.Context, c *Client) error {
 	if s.DeviceID != "" {
 		params.Set("device_id", s.DeviceID)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer+"/shuffle?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.urlPlayer+"/shuffle?"+params.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create shuffle request: %w", err)
 	}
@@ -218,7 +218,7 @@ func (r *Repeat) Dispatch(ctx context.Context, c *Client) error {
 	if r.DeviceID != "" {
 		params.Set("device_id", r.DeviceID)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer+"/repeat?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.urlPlayer+"/repeat?"+params.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create repeat request: %w", err)
 	}
@@ -245,7 +245,7 @@ func (v *Volume) Dispatch(ctx context.Context, c *Client) error {
 	if v.DeviceID != "" {
 		params.Set("device_id", v.DeviceID)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer+"/volume?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.urlPlayer+"/volume?"+params.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create volume request: %w", err)
 	}
@@ -285,7 +285,7 @@ func (t *Transfer) Dispatch(ctx context.Context, c *Client) error {
 		return fmt.Errorf("failed to marshal transfer request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.urlPlayer, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create transfer request: %w", err)
 	}

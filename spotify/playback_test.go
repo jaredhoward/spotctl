@@ -6,29 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 )
 
-func TestNewClient(t *testing.T) {
-	c := NewClient("token")
-	if c == nil {
-		t.Fatal("expected non-nil client")
-	}
-	if c.accessToken != "token" {
-		t.Fatalf("expected access token token, got %q", c.accessToken)
-	}
-	if c.httpClient == nil {
-		t.Fatal("expected a configured HTTP client")
-	}
-	if c.httpClient.Timeout != 10*time.Second {
-		t.Fatalf("expected timeout 10s, got %v", c.httpClient.Timeout)
-	}
-}
-
 func TestGetCurrentPlaybackSuccess(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/" {
 			t.Fatalf("expected GET /, got %s %s", r.Method, r.URL.Path)
@@ -47,8 +27,7 @@ func TestGetCurrentPlaybackSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	URLPlayer = server.URL
-	client := &Client{accessToken: "t", httpClient: server.Client()}
+	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
 	playback, err := client.GetCurrentPlayback(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -59,16 +38,12 @@ func TestGetCurrentPlaybackSuccess(t *testing.T) {
 }
 
 func TestGetCurrentPlaybackNoContent(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 
-	URLPlayer = server.URL
-	client := &Client{accessToken: "t", httpClient: server.Client()}
+	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
 	playback, err := client.GetCurrentPlayback(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -79,25 +54,18 @@ func TestGetCurrentPlaybackNoContent(t *testing.T) {
 }
 
 func TestGetCurrentPlaybackErrorStatus(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 
-	URLPlayer = server.URL
-	client := &Client{accessToken: "t", httpClient: server.Client()}
+	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
 	if _, err := client.GetCurrentPlayback(context.Background()); err == nil {
 		t.Fatal("expected error for non-200 response")
 	}
 }
 
 func TestGetCurrentPlaybackDecodeError(t *testing.T) {
-	oldURLPlayer := URLPlayer
-	t.Cleanup(func() { URLPlayer = oldURLPlayer })
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -105,8 +73,7 @@ func TestGetCurrentPlaybackDecodeError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	URLPlayer = server.URL
-	client := &Client{accessToken: "t", httpClient: server.Client()}
+	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
 	if _, err := client.GetCurrentPlayback(context.Background()); err == nil {
 		t.Fatal("expected decode error")
 	}
