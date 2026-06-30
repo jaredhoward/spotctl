@@ -27,7 +27,7 @@ func (c *Client) GetDevices(ctx context.Context) ([]Device, error) {
 		nil,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("could not create devices request: %w", err)
+		return nil, fmt.Errorf("failed to create devices request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 
@@ -44,7 +44,7 @@ func (c *Client) GetDevices(ctx context.Context) ([]Device, error) {
 
 	var devicesResp DevicesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&devicesResp); err != nil {
-		return nil, fmt.Errorf("could not decode devices response: %w", err)
+		return nil, fmt.Errorf("failed to decode devices response: %w", err)
 	}
 
 	return devicesResp.Devices, nil

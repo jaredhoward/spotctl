@@ -38,7 +38,7 @@ type PlaybackState struct {
 func (c *Client) GetCurrentPlayback(ctx context.Context) (*PlaybackState, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, URLPlayer, nil)
 	if err != nil {
-		return nil, fmt.Errorf("could not create current playback request: %w", err)
+		return nil, fmt.Errorf("failed to create current playback request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 
@@ -58,7 +58,7 @@ func (c *Client) GetCurrentPlayback(ctx context.Context) (*PlaybackState, error)
 
 	var playback PlaybackState
 	if err := json.NewDecoder(resp.Body).Decode(&playback); err != nil {
-		return nil, fmt.Errorf("could not decode current playback response: %w", err)
+		return nil, fmt.Errorf("failed to decode current playback response: %w", err)
 	}
 
 	return &playback, nil

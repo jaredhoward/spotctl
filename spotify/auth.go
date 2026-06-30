@@ -48,7 +48,7 @@ func refreshAccessToken(ctx context.Context, clientB64, refreshToken string) (Re
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, URLToken, strings.NewReader(data.Encode()))
 	if err != nil {
-		return RefreshResult{}, fmt.Errorf("could not create token request: %w", err)
+		return RefreshResult{}, fmt.Errorf("failed to create token request: %w", err)
 	}
 	req.Header.Set("Authorization", "Basic "+clientB64)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -72,7 +72,7 @@ func refreshAccessToken(ctx context.Context, clientB64, refreshToken string) (Re
 
 	var tokenResp tokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return RefreshResult{}, fmt.Errorf("could not decode token response: %w", err)
+		return RefreshResult{}, fmt.Errorf("failed to decode token response: %w", err)
 	}
 
 	if tokenResp.AccessToken == "" {
