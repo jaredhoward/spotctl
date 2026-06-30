@@ -214,6 +214,11 @@ type Repeat struct {
 }
 
 func (r *Repeat) Dispatch(ctx context.Context, c *Client) error {
+	switch r.State {
+	case "off", "track", "context":
+	default:
+		return fmt.Errorf("invalid repeat state %q: must be off, track, or context", r.State)
+	}
 	params := url.Values{"state": {r.State}}
 	if r.DeviceID != "" {
 		params.Set("device_id", r.DeviceID)
@@ -241,6 +246,9 @@ type Volume struct {
 }
 
 func (v *Volume) Dispatch(ctx context.Context, c *Client) error {
+	if v.Level < 0 || v.Level > 100 {
+		return fmt.Errorf("invalid volume level %d: must be 0–100", v.Level)
+	}
 	params := url.Values{"volume_percent": {fmt.Sprintf("%d", v.Level)}}
 	if v.DeviceID != "" {
 		params.Set("device_id", v.DeviceID)

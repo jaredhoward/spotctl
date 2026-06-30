@@ -346,20 +346,18 @@ func interpolateString(s string, data map[string]string) (string, error) {
 	if s == "" || !strings.Contains(s, "{{") {
 		return s, nil
 	}
-	var firstErr error
+	var missing []string
 	result := placeholderExpr.ReplaceAllStringFunc(s, func(match string) string {
 		key := strings.TrimSpace(placeholderExpr.FindStringSubmatch(match)[1])
 		val, ok := data[key]
 		if !ok {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("placeholder %q has no value (declare it in params)", key)
-			}
+			missing = append(missing, key)
 			return ""
 		}
 		return val
 	})
-	if firstErr != nil {
-		return "", firstErr
+	if len(missing) > 0 {
+		return "", fmt.Errorf("placeholders have no value (declare them in params): %s", strings.Join(missing, ", "))
 	}
 	return result, nil
 }
