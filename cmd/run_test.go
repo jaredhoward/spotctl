@@ -72,6 +72,58 @@ func wireClient(t *testing.T, srv *httptest.Server) (cleanup func()) {
 
 // ----- run command: integration ----------------------------------------------
 
+func TestRunCmd_NoArgs(t *testing.T) {
+	err := runCmd.RunE(runCmd, []string{})
+	if err == nil || !strings.Contains(err.Error(), "requires a set name") {
+		t.Fatalf("expected requires-set-name error, got %v", err)
+	}
+}
+
+func TestRunCmd_ConfigFlagNoValue(t *testing.T) {
+	err := runCmd.RunE(runCmd, []string{"--config"})
+	if err == nil || !strings.Contains(err.Error(), "--config requires a non-empty path") {
+		t.Fatalf("expected --config error, got %v", err)
+	}
+}
+
+func TestRunCmd_ConfigFlagEmptyEquals(t *testing.T) {
+	err := runCmd.RunE(runCmd, []string{"--config="})
+	if err == nil || !strings.Contains(err.Error(), "--config requires a non-empty path") {
+		t.Fatalf("expected --config error, got %v", err)
+	}
+}
+
+func TestRunCmd_ConfigFlagEqualsForm(t *testing.T) {
+	oldConfigPath := configPath
+	defer func() { configPath = oldConfigPath }()
+
+	tmp := writeTempConfig(t, &config.Config{
+		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
+	})
+
+	err := runCmd.RunE(runCmd, []string{"--config=" + tmp, "nonexistent"})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected not-found error, got %v", err)
+	}
+	if configPath != tmp {
+		t.Fatalf("expected configPath to be updated to %q, got %q", tmp, configPath)
+	}
+}
+
+func TestRunCmd_OnlyConfigFlag(t *testing.T) {
+	oldConfigPath := configPath
+	defer func() { configPath = oldConfigPath }()
+
+	tmp := writeTempConfig(t, &config.Config{
+		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
+	})
+
+	err := runCmd.RunE(runCmd, []string{"--config", tmp})
+	if err == nil || !strings.Contains(err.Error(), "requires a set name") {
+		t.Fatalf("expected requires-set-name error, got %v", err)
+	}
+}
+
 func TestRunCmd_SetNotFound(t *testing.T) {
 	oldConfigPath := configPath
 	defer func() { configPath = oldConfigPath }()
