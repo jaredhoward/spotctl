@@ -46,6 +46,12 @@ refresh_token: YOUR_REFRESH_TOKEN
 redirect_uri: https://your-redirect-uri
 ```
 
+An optional `playback_poll_interval` field controls how often `spotctl` polls Spotify to confirm state changes (default: `500ms`):
+
+```yaml
+playback_poll_interval: 500ms
+```
+
 ### 2. Discover and persist device IDs
 
 Before configuring sets, find the device IDs of your Spotify Connect devices:
@@ -110,6 +116,7 @@ Each command in a set has:
 | Field | Default | Description |
 |---|---|---|
 | `action` | *(required)* | See actions table below |
+| `name` | — | Optional label for this command. Used in log output and `spotctl sets` listings. |
 | `device_id` | — | Spotify device ID for this command. Overrides the set-level `device_id`. Omit to target the active device. |
 | `params` | — | Action-specific parameters (see below) |
 | `confirm` | set-level or `true` | Poll Spotify state until the action is reflected before continuing. Set to `false` to fire-and-forget. |
@@ -226,7 +233,7 @@ spotctl transfer --device DEVICE_ID --play --config ./config.yaml
 
 ### `sets`
 
-No additional flags. Reads config and prints each set name, command count, and device.
+No additional flags. Reads config and prints each set name, command count, device, and a numbered list of its commands.
 
 ### `run`
 
