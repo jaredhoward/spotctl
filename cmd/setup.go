@@ -126,7 +126,7 @@ func oauthFlow(ctx context.Context, clientID, clientSecret, redirectURI string, 
 		strings.NewReader(data.Encode()),
 	)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create token request: %w", err)
 	}
 	req.Header.Set("Authorization", "Basic "+
 		base64.StdEncoding.EncodeToString([]byte(clientID+":"+clientSecret)))
