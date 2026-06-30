@@ -28,8 +28,8 @@ type Action interface {
 //   - DeviceID set, no ContextURI: strong — verifies active device and IsPlaying.
 //   - Neither set: weak — priorState is captured at Dispatch time to detect a
 //     meaningful change (IsPlaying flipped, or active device changed). If the
-//     snapshot fails or nothing was active, falls back to bare IsPlaying check,
-//     which cannot distinguish a no-op from a successful play.
+//     snapshot fails or nothing was active, priorState is nil and Confirmed
+//     returns false, causing polling to continue until timeout.
 type Play struct {
 	DeviceID   string
 	ContextURI string
@@ -49,14 +49,14 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 	if p.ContextURI != "" {
 		body, err := json.Marshal(map[string]string{"context_uri": p.ContextURI})
 		if err != nil {
-			return fmt.Errorf("could not marshal play request: %w", err)
+			return fmt.Errorf("failed to marshal play request: %w", err)
 		}
 		reqBody = bytes.NewReader(body)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, playerURL(URLPlayer, "/play", p.DeviceID), reqBody)
 	if err != nil {
-		return fmt.Errorf("could not create play request: %w", err)
+		return fmt.Errorf("failed to create play request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	if p.ContextURI != "" {
@@ -106,7 +106,7 @@ type Pause struct {
 func (p *Pause) Dispatch(ctx context.Context, c *Client) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, playerURL(URLPlayer, "/pause", p.DeviceID), nil)
 	if err != nil {
-		return fmt.Errorf("could not create pause request: %w", err)
+		return fmt.Errorf("failed to create pause request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	return c.doExpectSuccess(req, "pause")
@@ -114,6 +114,19 @@ func (p *Pause) Dispatch(ctx context.Context, c *Client) error {
 
 func (p *Pause) Confirmed(state *PlaybackState) bool { return state != nil && !state.IsPlaying }
 func (p *Pause) Label() string                       { return fmt.Sprintf("pause device=%s", p.DeviceID) }
+
+// trackChanged returns true when the current track URI differs from the prior
+// track URI. Returns false when either snapshot is missing or has no item —
+// the caller should treat the result as unconfirmed and keep polling.
+func trackChanged(prior, current *PlaybackState) bool {
+	if current == nil || current.Item == nil {
+		return false
+	}
+	if prior == nil || prior.Item == nil {
+		return false
+	}
+	return current.Item.URI != prior.Item.URI
+}
 
 // Next skips to the next track.
 //
@@ -133,23 +146,13 @@ func (n *Next) Dispatch(ctx context.Context, c *Client) error {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(URLPlayer, "/next", n.DeviceID), nil)
 	if err != nil {
-		return fmt.Errorf("could not create next request: %w", err)
+		return fmt.Errorf("failed to create next request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	return c.doExpectSuccess(req, "next")
 }
 
-func (n *Next) Confirmed(state *PlaybackState) bool {
-	if state == nil || state.Item == nil {
-		return false
-	}
-	if n.priorState == nil || n.priorState.Item == nil {
-		// Snapshot unavailable; cannot verify track changed. Polling will
-		// continue until timeout — see type-level doc comment.
-		return false
-	}
-	return state.Item.URI != n.priorState.Item.URI
-}
+func (n *Next) Confirmed(state *PlaybackState) bool { return trackChanged(n.priorState, state) }
 
 func (n *Next) Label() string { return fmt.Sprintf("next device=%s", n.DeviceID) }
 
@@ -167,23 +170,13 @@ func (p *Previous) Dispatch(ctx context.Context, c *Client) error {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(URLPlayer, "/previous", p.DeviceID), nil)
 	if err != nil {
-		return fmt.Errorf("could not create previous request: %w", err)
+		return fmt.Errorf("failed to create previous request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	return c.doExpectSuccess(req, "previous")
 }
 
-func (p *Previous) Confirmed(state *PlaybackState) bool {
-	if state == nil || state.Item == nil {
-		return false
-	}
-	if p.priorState == nil || p.priorState.Item == nil {
-		// Snapshot unavailable; cannot verify track changed. Polling will
-		// continue until timeout — see type-level doc comment.
-		return false
-	}
-	return state.Item.URI != p.priorState.Item.URI
-}
+func (p *Previous) Confirmed(state *PlaybackState) bool { return trackChanged(p.priorState, state) }
 
 func (p *Previous) Label() string { return fmt.Sprintf("previous device=%s", p.DeviceID) }
 
@@ -200,7 +193,7 @@ func (s *Shuffle) Dispatch(ctx context.Context, c *Client) error {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer+"/shuffle?"+params.Encode(), nil)
 	if err != nil {
-		return fmt.Errorf("could not create shuffle request: %w", err)
+		return fmt.Errorf("failed to create shuffle request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	return c.doExpectSuccess(req, "shuffle")
@@ -227,7 +220,7 @@ func (r *Repeat) Dispatch(ctx context.Context, c *Client) error {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer+"/repeat?"+params.Encode(), nil)
 	if err != nil {
-		return fmt.Errorf("could not create repeat request: %w", err)
+		return fmt.Errorf("failed to create repeat request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	return c.doExpectSuccess(req, "repeat")
@@ -254,7 +247,7 @@ func (v *Volume) Dispatch(ctx context.Context, c *Client) error {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer+"/volume?"+params.Encode(), nil)
 	if err != nil {
-		return fmt.Errorf("could not create volume request: %w", err)
+		return fmt.Errorf("failed to create volume request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	return c.doExpectSuccess(req, "set volume")
@@ -289,12 +282,12 @@ func (t *Transfer) Dispatch(ctx context.Context, c *Client) error {
 		"play":       t.Play,
 	})
 	if err != nil {
-		return fmt.Errorf("could not marshal transfer request: %w", err)
+		return fmt.Errorf("failed to marshal transfer request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, URLPlayer, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("could not create transfer request: %w", err)
+		return fmt.Errorf("failed to create transfer request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	req.Header.Set("Content-Type", "application/json")

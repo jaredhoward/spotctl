@@ -12,7 +12,10 @@ import (
 
 var configPath string
 var appVersion = "dev"
-var newSpotifyClient = spotify.NewClient
+
+type clientFactory func(accessToken string) *spotify.Client
+
+var newSpotifyClient clientFactory = spotify.NewClient
 
 func SetVersion(v string) {
 	appVersion = v

@@ -38,6 +38,12 @@ func (c *Config) PlaybackPollIntervalDuration() time.Duration {
 }
 
 func Load(path string) (*Config, error) {
+	if info, err := os.Stat(path); err == nil {
+		if perm := info.Mode().Perm(); perm&0077 != 0 {
+			fmt.Fprintf(os.Stderr, "warning: config file %s has permissions %04o — credentials may be readable by other users\n", path, perm)
+		}
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("could not open config file: %w", err)
