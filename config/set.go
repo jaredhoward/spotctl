@@ -368,7 +368,7 @@ func interpolateString(s string, data map[string]string) (string, error) {
 // rendered against the resolved param map. Non-string fields (Level, Play,
 // Enabled) are copied as-is. Unknown placeholder keys render as empty strings.
 func (p *CommandParams) InterpolateParams(resolved map[string]string) (CommandParams, error) {
-	out := *p // shallow copy; pointer fields shared until overwritten below
+	out := *p // shallow copy; pointer fields (Level, Play, Enabled) are overwritten below — add new pointer fields there too
 	type strField struct {
 		src *string
 		dst *string
