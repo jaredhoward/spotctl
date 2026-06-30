@@ -75,7 +75,7 @@ func runDevices(cmd *cobra.Command, args []string) error {
 		return all[i].ID < all[j].ID
 	})
 
-	update := cmd.Flags().Changed("update") && cmd.Flag("update").Value.String() == "true"
+	update := updateDevicesFlag
 	configChanged := false
 
 	fmt.Println("Spotify Connect devices:")
