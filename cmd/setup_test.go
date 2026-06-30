@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -30,7 +31,7 @@ func TestOauthFlow_Success(t *testing.T) {
 	oauthHTTPClient = ts.Client()
 
 	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
-	refreshToken, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, ts.URL)
+	refreshToken, err := oauthFlow(context.Background(), "cid", "csecret", "http://localhost/callback", stdin, ts.URL)
 
 	ts.Close()
 	oauthHTTPClient = oldClient
@@ -45,7 +46,7 @@ func TestOauthFlow_Success(t *testing.T) {
 
 func TestOauthFlow_ParseError(t *testing.T) {
 	stdin := strings.NewReader("not a url\n")
-	_, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, "http://localhost/token")
+	_, err := oauthFlow(context.Background(), "cid", "csecret", "http://localhost/callback", stdin, "http://localhost/token")
 	if err == nil || (!strings.Contains(err.Error(), "could not parse redirect URL") && !strings.Contains(err.Error(), "no code found in redirect URL")) {
 		t.Fatalf("expected parse or no code error, got %v", err)
 	}
@@ -53,7 +54,7 @@ func TestOauthFlow_ParseError(t *testing.T) {
 
 func TestOauthFlow_NoCode(t *testing.T) {
 	stdin := strings.NewReader("http://localhost/callback?error=access_denied\n")
-	_, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, "http://localhost/token")
+	_, err := oauthFlow(context.Background(), "cid", "csecret", "http://localhost/callback", stdin, "http://localhost/token")
 	if err == nil || !strings.Contains(err.Error(), "no code found") {
 		t.Fatalf("expected no code error, got %v", err)
 	}
@@ -69,7 +70,7 @@ func TestOauthFlow_TokenExchangeError(t *testing.T) {
 	defer func() { oauthHTTPClient = oldClient }()
 
 	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
-	_, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, "http://localhost/token")
+	_, err := oauthFlow(context.Background(), "cid", "csecret", "http://localhost/callback", stdin, "http://localhost/token")
 	if err == nil || !strings.Contains(err.Error(), "token exchange failed") {
 		t.Fatalf("expected token exchange error, got %v", err)
 	}
@@ -85,7 +86,7 @@ func TestOauthFlow_DecodeError(t *testing.T) {
 	oauthHTTPClient = ts.Client()
 
 	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
-	_, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, ts.URL)
+	_, err := oauthFlow(context.Background(), "cid", "csecret", "http://localhost/callback", stdin, ts.URL)
 
 	ts.Close()
 	oauthHTTPClient = oldClient
@@ -105,7 +106,7 @@ func TestOauthFlow_NoRefreshToken(t *testing.T) {
 	oauthHTTPClient = ts.Client()
 
 	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
-	_, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, ts.URL)
+	_, err := oauthFlow(context.Background(), "cid", "csecret", "http://localhost/callback", stdin, ts.URL)
 
 	ts.Close()
 	oauthHTTPClient = oldClient
@@ -134,7 +135,7 @@ func TestSetupCmd_SavesConfig(t *testing.T) {
 	oauthHTTPClient = ts.Client()
 
 	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
-	refreshToken, err := oauthFlow("cid", "csecret", "http://localhost/callback", stdin, ts.URL)
+	refreshToken, err := oauthFlow(context.Background(), "cid", "csecret", "http://localhost/callback", stdin, ts.URL)
 
 	ts.Close()
 	oauthHTTPClient = oldClient

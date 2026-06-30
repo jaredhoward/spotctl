@@ -134,5 +134,31 @@ func (c *Config) validate() error {
 	if len(missing) > 0 {
 		return fmt.Errorf("config missing required fields: %v", missing)
 	}
+	for name, set := range c.Sets {
+		if err := validateOnFailure(set.OnError, "sets."+name+".on_error"); err != nil {
+			return err
+		}
+		if err := validateOnFailure(set.OnTimeout, "sets."+name+".on_timeout"); err != nil {
+			return err
+		}
+		for i, cmd := range set.Commands {
+			loc := fmt.Sprintf("sets.%s.commands[%d]", name, i)
+			if err := validateOnFailure(cmd.OnError, loc+".on_error"); err != nil {
+				return err
+			}
+			if err := validateOnFailure(cmd.OnTimeout, loc+".on_timeout"); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func validateOnFailure(v OnFailure, field string) error {
+	switch v {
+	case "", OnFailureFail, OnFailureContinue, OnFailureSkipRemaining:
+		return nil
+	default:
+		return fmt.Errorf("config field %s has invalid value %q (must be fail, continue, or skip_remaining)", field, v)
+	}
 }

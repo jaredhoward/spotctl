@@ -558,9 +558,11 @@ func TestBuild_UnknownAction(t *testing.T) {
 // ---- Spotify action types: Confirmed ----------------------------------------
 
 func TestPlay_Confirmed(t *testing.T) {
+	// No priorState and no constraints: cannot confirm — treat as unconfirmed
+	// rather than assuming success (consistent with Next/Previous behaviour).
 	a := &spotify.Play{}
-	if !a.Confirmed(&spotify.PlaybackState{IsPlaying: true}) {
-		t.Error("expected confirmed when is_playing=true and no constraints")
+	if a.Confirmed(&spotify.PlaybackState{IsPlaying: true}) {
+		t.Error("expected not confirmed when priorState is nil (no snapshot to compare against)")
 	}
 	if a.Confirmed(&spotify.PlaybackState{IsPlaying: false}) {
 		t.Error("expected not confirmed when is_playing=false")

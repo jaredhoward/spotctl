@@ -84,6 +84,9 @@ Run 'spotctl sets' to see declared params for each set.`,
 			case args[i] == "--config" && i+1 < len(args):
 				configPath = args[i+1]
 				i++
+			case args[i] == "--config":
+				// --config at end of args with no value
+				return fmt.Errorf("--config requires a non-empty path")
 			case len(args[i]) >= 9 && args[i][:9] == "--config=":
 				if args[i][9:] == "" {
 					return fmt.Errorf("--config requires a non-empty path")

@@ -2,6 +2,7 @@ package sets
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jaredhoward/spotctl/spotify"
@@ -38,7 +39,10 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 		timeout = defaultTimeout
 	}
 
+	const maxConsecutiveErrors = 5
+
 	deadline := time.Now().Add(timeout)
+	consecutiveErrors := 0
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
@@ -52,9 +56,14 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 		}
 		state, err := c.GetCurrentPlayback(ctx)
 		if err != nil {
+			consecutiveErrors++
+			if consecutiveErrors >= maxConsecutiveErrors {
+				return fmt.Errorf("polling aborted after %d consecutive errors: %w", consecutiveErrors, err)
+			}
 			time.Sleep(pollInterval)
 			continue
 		}
+		consecutiveErrors = 0
 		if a.Confirmed(state) {
 			return nil
 		}

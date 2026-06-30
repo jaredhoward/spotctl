@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/spotify"
@@ -39,7 +41,7 @@ var setupCmd = &cobra.Command{
 		fmt.Println("Starting OAuth flow...")
 		fmt.Println()
 
-		refreshToken, err := oauthFlow(clientID, clientSecret, redirectURI, os.Stdin)
+		refreshToken, err := oauthFlow(cmdCtx(cmd), clientID, clientSecret, redirectURI, os.Stdin)
 		if err != nil {
 			return fmt.Errorf("OAuth flow failed: %w", err)
 		}
@@ -81,10 +83,10 @@ func getOAuthClient() *http.Client {
 	if oauthHTTPClient != nil {
 		return oauthHTTPClient
 	}
-	return http.DefaultClient
+	return &http.Client{Timeout: 30 * time.Second}
 }
 
-func oauthFlow(clientID, clientSecret, redirectURI string, stdin io.Reader, opts ...string) (string, error) {
+func oauthFlow(ctx context.Context, clientID, clientSecret, redirectURI string, stdin io.Reader, opts ...string) (string, error) {
 	params := url.Values{}
 	params.Set("client_id", clientID)
 	params.Set("response_type", "code")
@@ -120,7 +122,7 @@ func oauthFlow(clientID, clientSecret, redirectURI string, stdin io.Reader, opts
 		endpoint = opts[0]
 	}
 
-	req, err := http.NewRequest(http.MethodPost, endpoint,
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint,
 		strings.NewReader(data.Encode()),
 	)
 	if err != nil {

@@ -42,6 +42,7 @@ func playerURL(base, path, deviceID string) string {
 }
 
 // doExpectSuccess executes req and returns nil on 2xx, or a descriptive error.
+// A 429 response includes the Retry-After value in the error message.
 func (c *Client) doExpectSuccess(req *http.Request, action string) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -51,6 +52,13 @@ func (c *Client) doExpectSuccess(req *http.Request, action string) error {
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			retryAfter := resp.Header.Get("Retry-After")
+			if retryAfter != "" {
+				return fmt.Errorf("%s rate limited (429): retry after %s seconds", action, retryAfter)
+			}
+			return fmt.Errorf("%s rate limited (429)", action)
+		}
 		return fmt.Errorf("%s returned unexpected status %d: %s", action, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 

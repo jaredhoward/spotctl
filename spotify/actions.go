@@ -81,14 +81,14 @@ func (p *Play) Confirmed(state *PlaybackState) bool {
 	// Weak signal: no constraints to verify against. Use priorState to detect
 	// a meaningful change if available — either IsPlaying flipped from false,
 	// or the active device changed. If priorState is nil (snapshot failed or
-	// nothing was active), fall back to bare IsPlaying, which cannot distinguish
-	// a no-op from a successful play.
-	if p.priorState != nil {
-		wasPlaying := p.priorState.IsPlaying
-		priorDevice := p.priorState.Device.ID
-		return (!wasPlaying && state.IsPlaying) || (priorDevice != state.Device.ID)
+	// nothing was active), treat as unconfirmed — same conservative approach
+	// as Next/Previous — and let polling continue until timeout.
+	if p.priorState == nil {
+		return false
 	}
-	return true
+	wasPlaying := p.priorState.IsPlaying
+	priorDevice := p.priorState.Device.ID
+	return (!wasPlaying && state.IsPlaying) || (priorDevice != state.Device.ID)
 }
 
 func (p *Play) Label() string {

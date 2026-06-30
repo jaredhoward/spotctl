@@ -441,11 +441,11 @@ func TestSpotifyActionLabelsAndConfirmed(t *testing.T) {
 			wantConfirmed: false,
 		},
 		{
-			name:          "play no constraints nil priorState falls back to IsPlaying",
+			name:          "play no constraints nil priorState returns false (unconfirmed)",
 			action:        &Play{},
 			state:         &PlaybackState{IsPlaying: true},
 			wantLabel:     "play device=",
-			wantConfirmed: true,
+			wantConfirmed: false,
 		},
 		{
 			name:          "play no constraints nil state",
