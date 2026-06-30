@@ -47,24 +47,31 @@ func runPlay(cmd *cobra.Command, args []string) error {
 // resolvePlayURI validates that at most one URI-type flag was set and builds
 // the full Spotify URI from whichever shorthand flag was used.
 func resolvePlayURI(cmd *cobra.Command, uri, playlistID, trackID, albumID, artistID string) (string, error) {
-	set := []string{}
-	if cmd.Flags().Changed("uri") {
-		set = append(set, "--uri")
+	type flagVal struct {
+		flag string
+		val  string
 	}
-	if cmd.Flags().Changed("playlist") {
-		set = append(set, "--playlist")
-	}
-	if cmd.Flags().Changed("track") {
-		set = append(set, "--track")
-	}
-	if cmd.Flags().Changed("album") {
-		set = append(set, "--album")
-	}
-	if cmd.Flags().Changed("artist") {
-		set = append(set, "--artist")
+	var set []flagVal
+	for _, fv := range []flagVal{
+		{"--uri", uri},
+		{"--playlist", playlistID},
+		{"--track", trackID},
+		{"--album", albumID},
+		{"--artist", artistID},
+	} {
+		if cmd.Flags().Changed(fv.flag[2:]) {
+			if fv.val == "" {
+				return "", fmt.Errorf("%s requires a non-empty value", fv.flag)
+			}
+			set = append(set, fv)
+		}
 	}
 	if len(set) > 1 {
-		return "", fmt.Errorf("only one of %v may be specified at a time", set)
+		names := make([]string, len(set))
+		for i, fv := range set {
+			names[i] = fv.flag
+		}
+		return "", fmt.Errorf("only one of %v may be specified at a time", names)
 	}
 	p := config.CommandParams{
 		URI:        uri,

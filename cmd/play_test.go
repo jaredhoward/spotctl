@@ -60,6 +60,24 @@ func TestResolveURI(t *testing.T) {
 	}
 }
 
+func TestResolveURIEmptyValue(t *testing.T) {
+	for _, flag := range []string{"uri", "playlist", "track", "album", "artist"} {
+		cmd := &cobra.Command{}
+		cmd.Flags().String("uri", "", "")
+		cmd.Flags().String("playlist", "", "")
+		cmd.Flags().String("track", "", "")
+		cmd.Flags().String("album", "", "")
+		cmd.Flags().String("artist", "", "")
+		if err := cmd.Flags().Set(flag, ""); err != nil {
+			t.Fatalf("flag %s: %v", flag, err)
+		}
+		_, err := resolvePlayURI(cmd, "", "", "", "", "")
+		if err == nil {
+			t.Errorf("expected error for --%s with empty value, got nil", flag)
+		}
+	}
+}
+
 func TestResolveURIMultipleFlags(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().String("uri", "", "")
