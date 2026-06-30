@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/spotify"
@@ -75,7 +76,7 @@ func exchangeAndSave(ctx context.Context, cfg *config.Config) (*spotify.Client, 
 	if result.NewRefreshToken != "" && result.NewRefreshToken != cfg.RefreshToken {
 		cfg.RefreshToken = result.NewRefreshToken
 		if saveErr := config.Save(configPath, cfg); saveErr != nil {
-			return nil, fmt.Errorf("could not save rotated refresh token: %w", saveErr)
+			fmt.Fprintf(os.Stderr, "warning: could not save rotated refresh token: %v\n", saveErr)
 		}
 	}
 
