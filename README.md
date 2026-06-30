@@ -244,8 +244,9 @@ No additional flags. Reads config and prints each set name, command count, and d
 | `--playlist <id>` | Playlist ID — shorthand for `--uri spotify:playlist:ID` |
 | `--track <id>` | Track ID — shorthand for `--uri spotify:track:ID` |
 | `--album <id>` | Album ID — shorthand for `--uri spotify:album:ID` |
+| `--artist <id>` | Artist ID — shorthand for `--uri spotify:artist:ID` |
 
-Only one of `--uri`, `--playlist`, `--track`, or `--album` may be specified at a time.
+Only one of `--uri`, `--playlist`, `--track`, `--album`, or `--artist` may be specified at a time. Each requires a non-empty value — passing an empty string (e.g. `--playlist "$ID"` when `$ID` is unset) is an error.
 
 ### `pause` / `next` / `previous`
 
