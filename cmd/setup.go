@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -120,7 +119,7 @@ func oauthFlow(ctx context.Context, clientID, clientSecret, redirectURI string, 
 		return "", fmt.Errorf("no code found in redirect URL")
 	}
 
-	log.Println("Exchanging auth code for tokens...")
+	fmt.Fprintln(os.Stderr, "Exchanging auth code for tokens...")
 
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")

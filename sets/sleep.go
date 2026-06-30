@@ -3,7 +3,7 @@ package sets
 import (
 	"context"
 	"fmt"
-	"log"
+	"os"
 	"time"
 
 	"github.com/jaredhoward/spotctl/spotify"
@@ -16,7 +16,7 @@ type Sleep struct {
 }
 
 func (s *Sleep) Dispatch(ctx context.Context, _ *spotify.Client) error {
-	log.Printf("sleeping %s", s.Duration)
+	fmt.Fprintf(os.Stderr, "sleeping %s\n", s.Duration)
 	select {
 	case <-time.After(s.Duration):
 		return nil

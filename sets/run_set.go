@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"os"
 
 	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/spotify"
@@ -31,14 +31,14 @@ type step struct {
 }
 
 func (r *RunSet) Dispatch(ctx context.Context, c *spotify.Client) error {
-	log.Printf("[set:%s] starting (%d steps)", r.Name, len(r.Steps))
+	fmt.Fprintf(os.Stderr, "[set:%s] starting (%d steps)\n", r.Name, len(r.Steps))
 
 	for _, s := range r.Steps {
-		log.Printf("[set:%s] %s: confirm=%v", r.Name, s.label, s.opts.Confirm)
+		fmt.Fprintf(os.Stderr, "[set:%s] %s: confirm=%v\n", r.Name, s.label, s.opts.Confirm)
 
 		err := Execute(ctx, s.action, c, s.opts)
 		if err == nil {
-			log.Printf("[set:%s] %s: done", r.Name, s.label)
+			fmt.Fprintf(os.Stderr, "[set:%s] %s: done\n", r.Name, s.label)
 			continue
 		}
 
@@ -51,33 +51,33 @@ func (r *RunSet) Dispatch(ctx context.Context, c *spotify.Client) error {
 		// Timeout: apply on_timeout policy.
 		var timeoutErr *TimeoutError
 		if errors.As(err, &timeoutErr) {
-			log.Printf("[set:%s] %s: timed out (%v)", r.Name, s.label, timeoutErr)
+			fmt.Fprintf(os.Stderr, "[set:%s] %s: timed out (%v)\n", r.Name, s.label, timeoutErr)
 			switch s.onTimeout {
 			case config.OnFailureFail:
 				return fmt.Errorf("set %q aborted: step %q timed out: %w", r.Name, s.label, timeoutErr)
 			case config.OnFailureSkipRemaining:
-				log.Printf("[set:%s] skipping remaining steps after timeout", r.Name)
+				fmt.Fprintf(os.Stderr, "[set:%s] skipping remaining steps after timeout\n", r.Name)
 				return nil
 			default: // continue
-				log.Printf("[set:%s] %s: continuing after timeout", r.Name, s.label)
+				fmt.Fprintf(os.Stderr, "[set:%s] %s: continuing after timeout\n", r.Name, s.label)
 				continue
 			}
 		}
 
 		// All other errors: apply on_error policy.
-		log.Printf("[set:%s] %s: error: %v", r.Name, s.label, err)
+		fmt.Fprintf(os.Stderr, "[set:%s] %s: error: %v\n", r.Name, s.label, err)
 		switch s.onError {
 		case config.OnFailureFail:
 			return fmt.Errorf("set %q aborted: step %q failed: %w", r.Name, s.label, err)
 		case config.OnFailureSkipRemaining:
-			log.Printf("[set:%s] skipping remaining steps after error", r.Name)
+			fmt.Fprintf(os.Stderr, "[set:%s] skipping remaining steps after error\n", r.Name)
 			return nil
 		default: // continue
-			log.Printf("[set:%s] %s: continuing after error", r.Name, s.label)
+			fmt.Fprintf(os.Stderr, "[set:%s] %s: continuing after error\n", r.Name, s.label)
 		}
 	}
 
-	log.Printf("[set:%s] complete", r.Name)
+	fmt.Fprintf(os.Stderr, "[set:%s] complete\n", r.Name)
 	return nil
 }
 
