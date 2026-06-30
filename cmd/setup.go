@@ -21,63 +21,73 @@ import (
 
 const scopes = "user-modify-playback-state user-read-playback-state"
 
+// setupStdin is the reader used by runSetup for interactive prompts and the
+// OAuth redirect URL. Tests replace it to avoid reading from os.Stdin.
+var setupStdin io.Reader = os.Stdin
+
 var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Interactive setup to generate config file",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		reader := bufio.NewReader(os.Stdin)
+	RunE:  runSetup,
+}
 
-		fmt.Println("=== setup ===")
-		fmt.Println()
+func runSetup(cmd *cobra.Command, args []string) error {
+	reader := bufio.NewReader(setupStdin)
 
-		// Load existing config if present to preserve sets and pre-fill prompts.
-		existing, _ := config.Load(configPath)
+	fmt.Println("=== setup ===")
+	fmt.Println()
 
-		clientID := promptWithDefault(reader, "Spotify Client ID", existingValue(existing, func(c *config.Config) string { return c.ClientID }))
-		clientSecret := promptWithDefault(reader, "Spotify Client Secret", existingValue(existing, func(c *config.Config) string { return c.ClientSecret }))
-		redirectURI := promptWithDefault(reader, "Spotify Redirect URI", existingValue(existing, func(c *config.Config) string { return c.RedirectURI }))
+	// Load existing config if present to preserve sets and pre-fill prompts.
+	existing, _ := config.Load(configPath)
 
-		fmt.Println()
-		fmt.Println("Starting OAuth flow...")
-		fmt.Println()
+	clientID := promptWithDefault(reader, "Spotify Client ID", existingValue(existing, func(c *config.Config) string { return c.ClientID }))
+	clientSecret := promptWithDefault(reader, "Spotify Client Secret", existingValue(existing, func(c *config.Config) string { return c.ClientSecret }))
+	redirectURI := promptWithDefault(reader, "Spotify Redirect URI", existingValue(existing, func(c *config.Config) string { return c.RedirectURI }))
 
-		refreshToken, err := oauthFlow(cmdCtx(cmd), clientID, clientSecret, redirectURI, os.Stdin)
-		if err != nil {
-			return fmt.Errorf("OAuth flow failed: %w", err)
-		}
+	fmt.Println()
+	fmt.Println("Starting OAuth flow...")
+	fmt.Println()
 
-		sets := map[string]config.Set{}
-		if existing != nil && existing.Sets != nil {
-			sets = existing.Sets
-		}
+	refreshToken, err := oauthFlow(cmdCtx(cmd), clientID, clientSecret, redirectURI, reader, setupTokenEndpoint)
+	if err != nil {
+		return fmt.Errorf("OAuth flow failed: %w", err)
+	}
 
-		deviceNames := map[string]string{}
-		if existing != nil && existing.DeviceNames != nil {
-			deviceNames = existing.DeviceNames
-		}
+	sets := map[string]config.Set{}
+	if existing != nil && existing.Sets != nil {
+		sets = existing.Sets
+	}
 
-		cfg := &config.Config{
-			ClientID:     clientID,
-			ClientSecret: clientSecret,
-			RefreshToken: refreshToken,
-			RedirectURI:  redirectURI,
-			Sets:         sets,
-			DeviceNames:  deviceNames,
-		}
+	deviceNames := map[string]string{}
+	if existing != nil && existing.DeviceNames != nil {
+		deviceNames = existing.DeviceNames
+	}
 
-		if err := config.Save(configPath, cfg); err != nil {
-			return fmt.Errorf("failed to save config: %w", err)
-		}
+	cfg := &config.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RefreshToken: refreshToken,
+		RedirectURI:  redirectURI,
+		Sets:         sets,
+		DeviceNames:  deviceNames,
+	}
 
-		fmt.Printf("\n✅ Config saved to %s\n", configPath)
-		fmt.Println("Add your sets to the config file to get started.")
-		return nil
-	},
+	if err := config.Save(configPath, cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	fmt.Printf("\n✅ Config saved to %s\n", configPath)
+	fmt.Println("Add your sets to the config file to get started.")
+	return nil
 }
 
 // oauthHTTPClient is the HTTP client used for token exchange. Tests may
 // replace it with a server-specific client to avoid mutating http.DefaultClient.
 var oauthHTTPClient *http.Client
+
+// setupTokenEndpoint overrides the Spotify token URL used by runSetup.
+// Empty string means use the default. Tests set this to a local httptest server URL.
+var setupTokenEndpoint string
 
 func getOAuthClient() *http.Client {
 	if oauthHTTPClient != nil {

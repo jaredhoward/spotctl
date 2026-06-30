@@ -116,52 +116,117 @@ func TestOauthFlow_NoRefreshToken(t *testing.T) {
 	}
 }
 
-func TestSetupCmd_SavesConfig(t *testing.T) {
+func TestRunSetup_SavesConfig(t *testing.T) {
 	oldConfigPath := configPath
-	defer func() { configPath = oldConfigPath }()
-
-	tmpFile := writeTempConfig(t, &config.Config{})
-	if tmpFile == "" {
-		t.Fatal("failed to create temp config")
-	}
-	configPath = tmpFile
+	oldStdin := setupStdin
+	oldClient := oauthHTTPClient
+	oldEndpoint := setupTokenEndpoint
+	defer func() {
+		configPath = oldConfigPath
+		setupStdin = oldStdin
+		oauthHTTPClient = oldClient
+		setupTokenEndpoint = oldEndpoint
+	}()
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"refresh_token": "saved-refresh-token"})
 	}))
+	defer ts.Close()
 
-	oldClient := oauthHTTPClient
+	configPath = t.TempDir() + "/config.yaml"
 	oauthHTTPClient = ts.Client()
+	setupTokenEndpoint = ts.URL
+	// Prompts: clientID, clientSecret, redirectURI; then oauthFlow reads the redirect URL.
+	setupStdin = strings.NewReader("myclientid\nmyclientsecret\nhttp://localhost/callback\nhttp://localhost/callback?code=testcode\n")
 
-	stdin := strings.NewReader("http://localhost/callback?code=testcode\n")
-	refreshToken, err := oauthFlow(context.Background(), "cid", "csecret", "http://localhost/callback", stdin, ts.URL)
-
-	ts.Close()
-	oauthHTTPClient = oldClient
-
-	if err != nil {
-		t.Fatalf("oauthFlow failed: %v", err)
-	}
-	if refreshToken != "saved-refresh-token" {
-		t.Fatalf("unexpected refresh token: %q", refreshToken)
-	}
-
-	cfg := &config.Config{
-		ClientID:     "cid",
-		ClientSecret: "csecret",
-		RefreshToken: refreshToken,
-	}
-	if err := config.Save(configPath, cfg); err != nil {
-		t.Fatalf("config.Save failed: %v", err)
+	if err := setupCmd.RunE(setupCmd, nil); err != nil {
+		t.Fatalf("runSetup failed: %v", err)
 	}
 
 	loaded, err := config.Load(configPath)
 	if err != nil {
 		t.Fatalf("config.Load failed: %v", err)
 	}
+	if loaded.ClientID != "myclientid" {
+		t.Errorf("expected clientID myclientid, got %q", loaded.ClientID)
+	}
 	if loaded.RefreshToken != "saved-refresh-token" {
 		t.Errorf("expected saved-refresh-token, got %q", loaded.RefreshToken)
+	}
+}
+
+func TestRunSetup_PreservesExistingSets(t *testing.T) {
+	oldConfigPath := configPath
+	oldStdin := setupStdin
+	oldClient := oauthHTTPClient
+	oldEndpoint := setupTokenEndpoint
+	defer func() {
+		configPath = oldConfigPath
+		setupStdin = oldStdin
+		oauthHTTPClient = oldClient
+		setupTokenEndpoint = oldEndpoint
+	}()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"refresh_token": "new-token"})
+	}))
+	defer ts.Close()
+
+	existing := &config.Config{
+		ClientID:     "old-id",
+		ClientSecret: "old-secret",
+		RefreshToken: "old-token",
+		RedirectURI:  "http://localhost/callback",
+		Sets:         map[string]config.Set{"mySet": {}},
+	}
+	configPath = writeTempConfig(t, existing)
+	oauthHTTPClient = ts.Client()
+	setupTokenEndpoint = ts.URL
+	// Empty lines accept the pre-filled defaults; last line is the OAuth redirect URL.
+	setupStdin = strings.NewReader("\n\n\nhttp://localhost/callback?code=testcode\n")
+
+	if err := setupCmd.RunE(setupCmd, nil); err != nil {
+		t.Fatalf("runSetup failed: %v", err)
+	}
+
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("config.Load failed: %v", err)
+	}
+	if _, ok := loaded.Sets["mySet"]; !ok {
+		t.Error("expected existing sets to be preserved")
+	}
+	if loaded.RefreshToken != "new-token" {
+		t.Errorf("expected new-token, got %q", loaded.RefreshToken)
+	}
+}
+
+func TestRunSetup_OAuthError(t *testing.T) {
+	oldConfigPath := configPath
+	oldStdin := setupStdin
+	oldClient := oauthHTTPClient
+	oldEndpoint := setupTokenEndpoint
+	defer func() {
+		configPath = oldConfigPath
+		setupStdin = oldStdin
+		oauthHTTPClient = oldClient
+		setupTokenEndpoint = oldEndpoint
+	}()
+
+	configPath = t.TempDir() + "/config.yaml"
+	setupTokenEndpoint = "http://localhost/token"
+	oauthHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("network fail")
+		}),
+	}
+	setupStdin = strings.NewReader("cid\nsecret\nhttp://localhost/callback\nhttp://localhost/callback?code=testcode\n")
+
+	err := setupCmd.RunE(setupCmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "OAuth flow failed") {
+		t.Fatalf("expected OAuth flow failed error, got %v", err)
 	}
 }
 
