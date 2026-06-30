@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -149,5 +150,17 @@ func TestPlayerURL_WithAndWithoutDevice(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("playerURL(%q, %q, %q) = %q, want %q", tc.base, tc.path, tc.deviceID, got, tc.want)
 		}
+	}
+}
+
+func TestPlayerURL_WithExtraParams(t *testing.T) {
+	got := playerURL("http://base", "/shuffle", "dev1", url.Values{"state": {"true"}})
+	if got != "http://base/shuffle?device_id=dev1&state=true" {
+		t.Errorf("unexpected URL: %q", got)
+	}
+
+	got = playerURL("http://base", "/shuffle", "", url.Values{"state": {"false"}})
+	if got != "http://base/shuffle?state=false" {
+		t.Errorf("unexpected URL: %q", got)
 	}
 }

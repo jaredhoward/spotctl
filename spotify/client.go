@@ -35,16 +35,26 @@ func (c *Client) SetPlayerURL(url string) {
 	c.urlPlayer = url
 }
 
-// playerURL builds a player endpoint URL, appending device_id only when non-empty.
-func playerURL(base, path, deviceID string) string {
+// playerURL builds a player endpoint URL. device_id is appended when non-empty;
+// extra holds any additional query params (e.g. state, volume_percent).
+func playerURL(base, path, deviceID string, extra ...url.Values) string {
 	u := base
 	if path != "" {
 		u = base + path
 	}
-	if deviceID == "" {
+	params := url.Values{}
+	if deviceID != "" {
+		params.Set("device_id", deviceID)
+	}
+	if len(extra) > 0 {
+		for k, vs := range extra[0] {
+			params[k] = vs
+		}
+	}
+	if len(params) == 0 {
 		return u
 	}
-	return u + "?" + url.Values{"device_id": {deviceID}}.Encode()
+	return u + "?" + params.Encode()
 }
 
 // doExpectSuccess executes req and returns nil on 2xx, or a descriptive error.

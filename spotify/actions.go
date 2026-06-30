@@ -187,11 +187,8 @@ type Shuffle struct {
 }
 
 func (s *Shuffle) Dispatch(ctx context.Context, c *Client) error {
-	params := url.Values{"state": {fmt.Sprintf("%t", s.Enabled)}}
-	if s.DeviceID != "" {
-		params.Set("device_id", s.DeviceID)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.urlPlayer+"/shuffle?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		playerURL(c.urlPlayer, "/shuffle", s.DeviceID, url.Values{"state": {fmt.Sprintf("%t", s.Enabled)}}), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create shuffle request: %w", err)
 	}
@@ -219,11 +216,8 @@ func (r *Repeat) Dispatch(ctx context.Context, c *Client) error {
 	default:
 		return fmt.Errorf("invalid repeat state %q: must be off, track, or context", r.State)
 	}
-	params := url.Values{"state": {r.State}}
-	if r.DeviceID != "" {
-		params.Set("device_id", r.DeviceID)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.urlPlayer+"/repeat?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		playerURL(c.urlPlayer, "/repeat", r.DeviceID, url.Values{"state": {r.State}}), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create repeat request: %w", err)
 	}
@@ -249,11 +243,8 @@ func (v *Volume) Dispatch(ctx context.Context, c *Client) error {
 	if v.Level < 0 || v.Level > 100 {
 		return fmt.Errorf("invalid volume level %d: must be 0–100", v.Level)
 	}
-	params := url.Values{"volume_percent": {fmt.Sprintf("%d", v.Level)}}
-	if v.DeviceID != "" {
-		params.Set("device_id", v.DeviceID)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.urlPlayer+"/volume?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		playerURL(c.urlPlayer, "/volume", v.DeviceID, url.Values{"volume_percent": {fmt.Sprintf("%d", v.Level)}}), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create volume request: %w", err)
 	}
