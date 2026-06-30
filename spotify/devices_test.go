@@ -1,6 +1,7 @@
 package spotify
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +23,7 @@ func TestGetDevicesSuccess(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "token", httpClient: server.Client()}
-	devices, err := client.GetDevices()
+	devices, err := client.GetDevices(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestGetDevicesError(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "token", httpClient: server.Client()}
-	if _, err := client.GetDevices(); err == nil {
+	if _, err := client.GetDevices(context.Background()); err == nil {
 		t.Fatal("expected error for non-200 response")
 	}
 }
@@ -59,7 +60,7 @@ func TestGetDevicesDecodeError(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "token", httpClient: server.Client()}
-	if _, err := client.GetDevices(); err == nil {
+	if _, err := client.GetDevices(context.Background()); err == nil {
 		t.Fatal("expected decode error")
 	}
 }

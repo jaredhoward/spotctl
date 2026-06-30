@@ -25,7 +25,7 @@ type RefreshResult struct {
 	NewRefreshToken string
 }
 
-type TokenResponse struct {
+type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
@@ -41,12 +41,12 @@ type tokenErrorResponse struct {
 
 var RefreshAccessToken = refreshAccessToken
 
-func refreshAccessToken(clientB64, refreshToken string) (RefreshResult, error) {
+func refreshAccessToken(ctx context.Context, clientB64, refreshToken string) (RefreshResult, error) {
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, URLToken, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, URLToken, strings.NewReader(data.Encode()))
 	if err != nil {
 		return RefreshResult{}, fmt.Errorf("could not create token request: %w", err)
 	}
@@ -70,7 +70,7 @@ func refreshAccessToken(clientB64, refreshToken string) (RefreshResult, error) {
 		return RefreshResult{}, fmt.Errorf("token request returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	var tokenResp TokenResponse
+	var tokenResp tokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return RefreshResult{}, fmt.Errorf("could not decode token response: %w", err)
 	}

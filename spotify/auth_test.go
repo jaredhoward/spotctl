@@ -1,6 +1,7 @@
 package spotify
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -23,12 +24,12 @@ func TestRefreshAccessTokenSuccess(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(TokenResponse{AccessToken: "access-token", TokenType: "Bearer", ExpiresIn: 3600})
+		json.NewEncoder(w).Encode(tokenResponse{AccessToken: "access-token", TokenType: "Bearer", ExpiresIn: 3600})
 	}))
 	defer server.Close()
 
 	URLToken = server.URL
-	result, err := RefreshAccessToken(base64.StdEncoding.EncodeToString([]byte("id:secret")), "refresh-token")
+	result, err := RefreshAccessToken(context.Background(), base64.StdEncoding.EncodeToString([]byte("id:secret")), "refresh-token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +47,7 @@ func TestRefreshAccessTokenRotation(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(TokenResponse{
+		json.NewEncoder(w).Encode(tokenResponse{
 			AccessToken:  "access-token",
 			TokenType:    "Bearer",
 			ExpiresIn:    3600,
@@ -56,7 +57,7 @@ func TestRefreshAccessTokenRotation(t *testing.T) {
 	defer server.Close()
 
 	URLToken = server.URL
-	result, err := RefreshAccessToken("clientb64", "old-refresh-token")
+	result, err := RefreshAccessToken(context.Background(), "clientb64", "old-refresh-token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +79,7 @@ func TestRefreshAccessTokenBadResponse(t *testing.T) {
 	defer server.Close()
 
 	URLToken = server.URL
-	if _, err := RefreshAccessToken("foo", "bar"); err == nil {
+	if _, err := RefreshAccessToken(context.Background(), "foo", "bar"); err == nil {
 		t.Fatal("expected error for bad token response")
 	}
 }
@@ -89,12 +90,12 @@ func TestRefreshAccessTokenEmptyToken(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(TokenResponse{AccessToken: "", TokenType: "Bearer", ExpiresIn: 3600})
+		json.NewEncoder(w).Encode(tokenResponse{AccessToken: "", TokenType: "Bearer", ExpiresIn: 3600})
 	}))
 	defer server.Close()
 
 	URLToken = server.URL
-	if _, err := RefreshAccessToken("foo", "bar"); err == nil {
+	if _, err := RefreshAccessToken(context.Background(), "foo", "bar"); err == nil {
 		t.Fatal("expected error for empty access token")
 	}
 }
@@ -110,7 +111,7 @@ func TestRefreshAccessTokenDecodeError(t *testing.T) {
 	defer server.Close()
 
 	URLToken = server.URL
-	if _, err := RefreshAccessToken("foo", "bar"); err == nil {
+	if _, err := RefreshAccessToken(context.Background(), "foo", "bar"); err == nil {
 		t.Fatal("expected error for invalid JSON response")
 	}
 }
@@ -128,7 +129,7 @@ func TestRefreshAccessTokenNetworkError(t *testing.T) {
 	server.Close()
 
 	URLToken = addr
-	if _, err := RefreshAccessToken("clientb64", "refresh"); err == nil {
+	if _, err := RefreshAccessToken(context.Background(), "clientb64", "refresh"); err == nil {
 		t.Fatal("expected network error when server is closed")
 	}
 }
@@ -152,7 +153,7 @@ func TestRefreshAccessTokenInvalidGrant(t *testing.T) {
 	defer server.Close()
 
 	URLToken = server.URL
-	_, err := RefreshAccessToken("foo", "bar")
+	_, err := RefreshAccessToken(context.Background(), "foo", "bar")
 	if err == nil {
 		t.Fatal("expected invalid_grant error")
 	}
@@ -179,7 +180,7 @@ func TestRefreshAccessTokenOtherBadRequest(t *testing.T) {
 	defer server.Close()
 
 	URLToken = server.URL
-	_, err := RefreshAccessToken("foo", "bar")
+	_, err := RefreshAccessToken(context.Background(), "foo", "bar")
 	if err == nil {
 		t.Fatal("expected an error")
 	}

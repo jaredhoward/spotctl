@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/jaredhoward/spotctl/config"
@@ -33,13 +32,13 @@ func runPlay(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	client, err := newClientFromConfig()
+	client, err := newClientFromConfig(cmdCtx(cmd))
 	if err != nil {
 		return err
 	}
 
 	a := &spotify.Play{DeviceID: playDeviceID, ContextURI: contextURI}
-	if err := sets.Execute(context.Background(), a, client, sets.ExecuteOptions{}); err != nil {
+	if err := sets.Execute(cmdCtx(cmd), a, client, sets.ExecuteOptions{}); err != nil {
 		return fmt.Errorf("play failed: %w", err)
 	}
 	return nil
@@ -87,11 +86,11 @@ var pauseCmd = &cobra.Command{
 	Use:   "pause",
 	Short: "Pause Spotify playback",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := newClientFromConfig()
+		client, err := newClientFromConfig(cmdCtx(cmd))
 		if err != nil {
 			return err
 		}
-		if err := sets.Execute(context.Background(), &spotify.Pause{DeviceID: pauseDeviceID}, client, sets.ExecuteOptions{}); err != nil {
+		if err := sets.Execute(cmdCtx(cmd), &spotify.Pause{DeviceID: pauseDeviceID}, client, sets.ExecuteOptions{}); err != nil {
 			return fmt.Errorf("pause failed: %w", err)
 		}
 		return nil
@@ -102,11 +101,11 @@ var nextCmd = &cobra.Command{
 	Use:   "next",
 	Short: "Skip to the next track",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := newClientFromConfig()
+		client, err := newClientFromConfig(cmdCtx(cmd))
 		if err != nil {
 			return err
 		}
-		if err := sets.Execute(context.Background(), &spotify.Next{DeviceID: nextDeviceID}, client, sets.ExecuteOptions{}); err != nil {
+		if err := sets.Execute(cmdCtx(cmd), &spotify.Next{DeviceID: nextDeviceID}, client, sets.ExecuteOptions{}); err != nil {
 			return fmt.Errorf("next failed: %w", err)
 		}
 		return nil
@@ -117,11 +116,11 @@ var previousCmd = &cobra.Command{
 	Use:   "previous",
 	Short: "Return to the previous track",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := newClientFromConfig()
+		client, err := newClientFromConfig(cmdCtx(cmd))
 		if err != nil {
 			return err
 		}
-		if err := sets.Execute(context.Background(), &spotify.Previous{DeviceID: previousDeviceID}, client, sets.ExecuteOptions{}); err != nil {
+		if err := sets.Execute(cmdCtx(cmd), &spotify.Previous{DeviceID: previousDeviceID}, client, sets.ExecuteOptions{}); err != nil {
 			return fmt.Errorf("previous failed: %w", err)
 		}
 		return nil
@@ -137,11 +136,11 @@ var shuffleCmd = &cobra.Command{
 	Use:   "shuffle",
 	Short: "Enable or disable shuffle",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := newClientFromConfig()
+		client, err := newClientFromConfig(cmdCtx(cmd))
 		if err != nil {
 			return err
 		}
-		if err := sets.Execute(context.Background(), &spotify.Shuffle{DeviceID: shuffleDeviceID, Enabled: shuffleEnabled}, client, sets.ExecuteOptions{}); err != nil {
+		if err := sets.Execute(cmdCtx(cmd), &spotify.Shuffle{DeviceID: shuffleDeviceID, Enabled: shuffleEnabled}, client, sets.ExecuteOptions{}); err != nil {
 			return fmt.Errorf("shuffle failed: %w", err)
 		}
 		return nil
@@ -160,11 +159,11 @@ var repeatCmd = &cobra.Command{
 		if repeatState != "off" && repeatState != "track" && repeatState != "context" {
 			return fmt.Errorf("--state must be one of: off, track, context (got %q)", repeatState)
 		}
-		client, err := newClientFromConfig()
+		client, err := newClientFromConfig(cmdCtx(cmd))
 		if err != nil {
 			return err
 		}
-		if err := sets.Execute(context.Background(), &spotify.Repeat{DeviceID: repeatDeviceID, State: repeatState}, client, sets.ExecuteOptions{}); err != nil {
+		if err := sets.Execute(cmdCtx(cmd), &spotify.Repeat{DeviceID: repeatDeviceID, State: repeatState}, client, sets.ExecuteOptions{}); err != nil {
 			return fmt.Errorf("repeat failed: %w", err)
 		}
 		return nil
@@ -187,13 +186,13 @@ func runTransfer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("transfer requires --device")
 	}
 
-	client, err := newClientFromConfig()
+	client, err := newClientFromConfig(cmdCtx(cmd))
 	if err != nil {
 		return err
 	}
 
 	a := &spotify.Transfer{DeviceID: transferDeviceID, Play: transferPlay}
-	if err := sets.Execute(context.Background(), a, client, sets.ExecuteOptions{}); err != nil {
+	if err := sets.Execute(cmdCtx(cmd), a, client, sets.ExecuteOptions{}); err != nil {
 		return fmt.Errorf("transfer failed: %w", err)
 	}
 	return nil
@@ -218,13 +217,13 @@ func runVolume(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("volume must be between 0 and 100 (got %d)", volumeLevel)
 	}
 
-	client, err := newClientFromConfig()
+	client, err := newClientFromConfig(cmdCtx(cmd))
 	if err != nil {
 		return err
 	}
 
 	a := &spotify.Volume{DeviceID: volumeDeviceID, Level: volumeLevel}
-	if err := sets.Execute(context.Background(), a, client, sets.ExecuteOptions{}); err != nil {
+	if err := sets.Execute(cmdCtx(cmd), a, client, sets.ExecuteOptions{}); err != nil {
 		return fmt.Errorf("volume failed: %w", err)
 	}
 	return nil

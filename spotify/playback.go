@@ -1,6 +1,7 @@
 package spotify
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,8 +35,8 @@ type PlaybackState struct {
 	Context      *PlaybackContext `json:"context"`
 }
 
-func (c *Client) GetCurrentPlayback() (*PlaybackState, error) {
-	req, err := http.NewRequest(http.MethodGet, URLPlayer, nil)
+func (c *Client) GetCurrentPlayback(ctx context.Context) (*PlaybackState, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, URLPlayer, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create current playback request: %w", err)
 	}

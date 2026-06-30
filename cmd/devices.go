@@ -17,7 +17,7 @@ var devicesCmd = &cobra.Command{
 }
 
 func runDevices(cmd *cobra.Command, args []string) error {
-	cfg, client, err := loadConfigWithClient()
+	cfg, client, err := loadConfigWithClient(cmdCtx(cmd))
 	if err != nil {
 		return err
 	}
@@ -25,7 +25,7 @@ func runDevices(cmd *cobra.Command, args []string) error {
 		cfg.DeviceNames = map[string]string{}
 	}
 
-	liveDevices, err := client.GetDevices()
+	liveDevices, err := client.GetDevices(cmdCtx(cmd))
 	if err != nil {
 		return fmt.Errorf("failed to get devices: %w", err)
 	}

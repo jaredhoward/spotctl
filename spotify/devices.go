@@ -1,6 +1,7 @@
 package spotify
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,8 +21,8 @@ type DevicesResponse struct {
 	Devices []Device `json:"devices"`
 }
 
-func (c *Client) GetDevices() ([]Device, error) {
-	req, err := http.NewRequest(http.MethodGet,
+func (c *Client) GetDevices(ctx context.Context) ([]Device, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/devices", URLPlayer),
 		nil,
 	)

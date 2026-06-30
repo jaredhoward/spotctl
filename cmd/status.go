@@ -16,12 +16,12 @@ var statusCmd = &cobra.Command{
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	client, err := newClientFromConfig()
+	client, err := newClientFromConfig(cmdCtx(cmd))
 	if err != nil {
 		return err
 	}
 
-	playback, err := client.GetCurrentPlayback()
+	playback, err := client.GetCurrentPlayback(cmdCtx(cmd))
 	if err != nil {
 		return fmt.Errorf("failed to get current playback: %w", err)
 	}

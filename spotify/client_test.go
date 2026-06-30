@@ -1,6 +1,7 @@
 package spotify
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -50,7 +51,7 @@ func TestGetCurrentPlayback_ErrorStatus(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	state, err := client.GetCurrentPlayback()
+	state, err := client.GetCurrentPlayback(context.Background())
 	if err == nil {
 		t.Fatal("expected error for non-200 status")
 	}
@@ -73,7 +74,7 @@ func TestGetCurrentPlayback_NoContent(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	state, err := client.GetCurrentPlayback()
+	state, err := client.GetCurrentPlayback(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -109,7 +110,7 @@ func TestGetCurrentPlayback_WithState(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	state, err := client.GetCurrentPlayback()
+	state, err := client.GetCurrentPlayback(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

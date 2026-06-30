@@ -15,10 +15,14 @@ type Sleep struct {
 	Duration time.Duration
 }
 
-func (s *Sleep) Dispatch(_ context.Context, _ *spotify.Client) error {
+func (s *Sleep) Dispatch(ctx context.Context, _ *spotify.Client) error {
 	log.Printf("sleeping %s", s.Duration)
-	time.Sleep(s.Duration)
-	return nil
+	select {
+	case <-time.After(s.Duration):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *Sleep) Confirmed(_ *spotify.PlaybackState) bool { return true }

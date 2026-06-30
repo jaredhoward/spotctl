@@ -1,6 +1,7 @@
 package spotify
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -48,7 +49,7 @@ func TestGetCurrentPlaybackSuccess(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	playback, err := client.GetCurrentPlayback()
+	playback, err := client.GetCurrentPlayback(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func TestGetCurrentPlaybackNoContent(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	playback, err := client.GetCurrentPlayback()
+	playback, err := client.GetCurrentPlayback(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +89,7 @@ func TestGetCurrentPlaybackErrorStatus(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	if _, err := client.GetCurrentPlayback(); err == nil {
+	if _, err := client.GetCurrentPlayback(context.Background()); err == nil {
 		t.Fatal("expected error for non-200 response")
 	}
 }
@@ -106,7 +107,7 @@ func TestGetCurrentPlaybackDecodeError(t *testing.T) {
 
 	URLPlayer = server.URL
 	client := &Client{accessToken: "t", httpClient: server.Client()}
-	if _, err := client.GetCurrentPlayback(); err == nil {
+	if _, err := client.GetCurrentPlayback(context.Background()); err == nil {
 		t.Fatal("expected decode error")
 	}
 }

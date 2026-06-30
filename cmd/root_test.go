@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -43,11 +44,11 @@ func TestNewClientFromConfig_TokenRefreshFailure(t *testing.T) {
 	}()
 
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+	spotify.RefreshAccessToken = func(_ context.Context, _, _ string) (spotify.RefreshResult, error) {
 		return spotify.RefreshResult{}, errors.New("token refresh failed")
 	}
 
-	_, err := newClientFromConfig()
+	_, err := newClientFromConfig(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "failed to refresh token") {
 		t.Fatalf("expected token refresh error, got %v", err)
 	}
@@ -58,7 +59,7 @@ func TestNewClientFromConfig_ConfigLoadFailure(t *testing.T) {
 	defer func() { configPath = oldConfigPath }()
 
 	configPath = "/nonexistent/path/config.yaml"
-	_, err := newClientFromConfig()
+	_, err := newClientFromConfig(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "failed to load config") {
 		t.Fatalf("expected config load error, got %v", err)
 	}
@@ -78,11 +79,11 @@ func TestNewClientFromConfig_InvalidGrantDiscardsToken(t *testing.T) {
 	}()
 
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "stale-refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+	spotify.RefreshAccessToken = func(_ context.Context, _, _ string) (spotify.RefreshResult, error) {
 		return spotify.RefreshResult{}, fmt.Errorf("%w: token revoked", spotify.ErrInvalidGrant)
 	}
 
-	_, err := newClientFromConfig()
+	_, err := newClientFromConfig(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "spotctl setup") {
 		t.Fatalf("expected reauthorization error mentioning 'spotctl setup', got %v", err)
 	}
@@ -114,11 +115,11 @@ func TestLoadConfigWithClient_RotatesRefreshToken(t *testing.T) {
 	}()
 
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "old-refresh"})
-	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+	spotify.RefreshAccessToken = func(_ context.Context, _, _ string) (spotify.RefreshResult, error) {
 		return spotify.RefreshResult{AccessToken: "new-access", NewRefreshToken: "new-refresh"}, nil
 	}
 
-	cfg, client, err := loadConfigWithClient()
+	cfg, client, err := loadConfigWithClient(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -142,12 +143,12 @@ func TestNewClientFromCfg_Success(t *testing.T) {
 	oldRefresh := spotify.RefreshAccessToken
 	defer func() { spotify.RefreshAccessToken = oldRefresh }()
 
-	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+	spotify.RefreshAccessToken = func(_ context.Context, _, _ string) (spotify.RefreshResult, error) {
 		return spotify.RefreshResult{AccessToken: "access-token"}, nil
 	}
 
 	cfg := &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"}
-	client, err := newClientFromCfg(cfg)
+	client, err := newClientFromCfg(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,12 +161,12 @@ func TestNewClientFromCfg_TokenRefreshFailure(t *testing.T) {
 	oldRefresh := spotify.RefreshAccessToken
 	defer func() { spotify.RefreshAccessToken = oldRefresh }()
 
-	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+	spotify.RefreshAccessToken = func(_ context.Context, _, _ string) (spotify.RefreshResult, error) {
 		return spotify.RefreshResult{}, errors.New("token refresh failed")
 	}
 
 	cfg := &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"}
-	_, err := newClientFromCfg(cfg)
+	_, err := newClientFromCfg(context.Background(), cfg)
 	if err == nil || !strings.Contains(err.Error(), "failed to refresh token") {
 		t.Fatalf("expected token refresh error, got %v", err)
 	}
@@ -188,11 +189,11 @@ func TestNewClientFromCfg_InvalidGrantDiscardsToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+	spotify.RefreshAccessToken = func(_ context.Context, _, _ string) (spotify.RefreshResult, error) {
 		return spotify.RefreshResult{}, fmt.Errorf("%w: token revoked", spotify.ErrInvalidGrant)
 	}
 
-	_, err = newClientFromCfg(cfg)
+	_, err = newClientFromCfg(context.Background(), cfg)
 	if err == nil || !strings.Contains(err.Error(), "spotctl setup") {
 		t.Fatalf("expected reauthorization error mentioning 'spotctl setup', got %v", err)
 	}
@@ -226,11 +227,11 @@ func TestNewClientFromCfg_RotatesRefreshToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+	spotify.RefreshAccessToken = func(_ context.Context, _, _ string) (spotify.RefreshResult, error) {
 		return spotify.RefreshResult{AccessToken: "new-access", NewRefreshToken: "new-refresh"}, nil
 	}
 
-	if _, err := newClientFromCfg(cfg); err != nil {
+	if _, err := newClientFromCfg(context.Background(), cfg); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if cfg.RefreshToken != "new-refresh" {

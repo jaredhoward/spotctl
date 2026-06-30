@@ -40,7 +40,7 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 	// Snapshot current state before dispatching when we have no ContextURI to
 	// verify against. Used by Confirmed to detect a meaningful state change.
 	if p.ContextURI == "" {
-		if state, err := c.GetCurrentPlayback(); err == nil {
+		if state, err := c.GetCurrentPlayback(ctx); err == nil {
 			p.priorState = state
 		}
 	}
@@ -128,7 +128,7 @@ type Next struct {
 }
 
 func (n *Next) Dispatch(ctx context.Context, c *Client) error {
-	if state, err := c.GetCurrentPlayback(); err == nil {
+	if state, err := c.GetCurrentPlayback(ctx); err == nil {
 		n.priorState = state
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(URLPlayer, "/next", n.DeviceID), nil)
@@ -162,7 +162,7 @@ type Previous struct {
 }
 
 func (p *Previous) Dispatch(ctx context.Context, c *Client) error {
-	if state, err := c.GetCurrentPlayback(); err == nil {
+	if state, err := c.GetCurrentPlayback(ctx); err == nil {
 		p.priorState = state
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(URLPlayer, "/previous", p.DeviceID), nil)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -58,7 +59,7 @@ func wireClient(t *testing.T, srv *httptest.Server) (cleanup func()) {
 		c.SetHTTPClient(srv.Client())
 		return c
 	}
-	spotify.RefreshAccessToken = func(_, _ string) (spotify.RefreshResult, error) {
+	spotify.RefreshAccessToken = func(_ context.Context, _, _ string) (spotify.RefreshResult, error) {
 		return spotify.RefreshResult{AccessToken: "token"}, nil
 	}
 

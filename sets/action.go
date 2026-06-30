@@ -50,7 +50,7 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 		if a.Confirmed(nil) {
 			return nil
 		}
-		state, err := c.GetCurrentPlayback()
+		state, err := c.GetCurrentPlayback(ctx)
 		if err != nil {
 			time.Sleep(pollInterval)
 			continue

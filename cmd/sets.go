@@ -1,14 +1,13 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"sort"
 
-	"github.com/spf13/pflag"
 	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/sets"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // ---- sets -------------------------------------------------------------------
@@ -139,12 +138,12 @@ Run 'spotctl sets' to see declared params for each set.`,
 			return err
 		}
 
-		client, err := newClientFromCfg(cfg)
+		client, err := newClientFromCfg(cmdCtx(cmd), cfg)
 		if err != nil {
 			return err
 		}
 
-		return rs.Dispatch(context.Background(), client)
+		return rs.Dispatch(cmdCtx(cmd), client)
 	},
 }
 
