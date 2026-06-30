@@ -114,6 +114,14 @@ func oauthFlow(ctx context.Context, clientID, clientSecret, redirectURI string, 
 		return "", fmt.Errorf("could not parse redirect URL: %w", err)
 	}
 
+	expected, err := url.Parse(redirectURI)
+	if err != nil {
+		return "", fmt.Errorf("could not parse configured redirect URI: %w", err)
+	}
+	if parsed.Scheme != expected.Scheme || parsed.Host != expected.Host || parsed.Path != expected.Path {
+		return "", fmt.Errorf("pasted URL (%s) does not match configured redirect URI (%s)", parsed.Scheme+"://"+parsed.Host+parsed.Path, redirectURI)
+	}
+
 	code := parsed.Query().Get("code")
 	if code == "" {
 		return "", fmt.Errorf("no code found in redirect URL")

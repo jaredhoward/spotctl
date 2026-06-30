@@ -47,8 +47,16 @@ func TestOauthFlow_Success(t *testing.T) {
 func TestOauthFlow_ParseError(t *testing.T) {
 	stdin := strings.NewReader("not a url\n")
 	_, err := oauthFlow(context.Background(), "cid", "csecret", "http://localhost/callback", stdin, "http://localhost/token")
-	if err == nil || (!strings.Contains(err.Error(), "could not parse redirect URL") && !strings.Contains(err.Error(), "no code found in redirect URL")) {
-		t.Fatalf("expected parse or no code error, got %v", err)
+	if err == nil || (!strings.Contains(err.Error(), "could not parse redirect URL") && !strings.Contains(err.Error(), "no code found in redirect URL") && !strings.Contains(err.Error(), "does not match configured redirect URI")) {
+		t.Fatalf("expected parse, no code, or mismatch error, got %v", err)
+	}
+}
+
+func TestOauthFlow_RedirectMismatch(t *testing.T) {
+	stdin := strings.NewReader("http://localhost:9999/callback?code=testcode\n")
+	_, err := oauthFlow(context.Background(), "cid", "csecret", "http://localhost:8080/callback", stdin, "http://localhost/token")
+	if err == nil || !strings.Contains(err.Error(), "does not match configured redirect URI") {
+		t.Fatalf("expected redirect mismatch error, got %v", err)
 	}
 }
 
