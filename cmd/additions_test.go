@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -142,12 +143,27 @@ func TestShuffleCmd_Enabled(t *testing.T) {
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
 	var gotState string
+	postState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying:    true,
+		ShuffleState: true,
+		Device:       spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true},
+	})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotState = r.URL.Query().Get("state")
-		if r.URL.Query().Get("device_id") != "dev-1" {
-			t.Errorf("expected device_id=dev-1, got %q", r.URL.Query().Get("device_id"))
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/shuffle":
+			gotState = r.URL.Query().Get("state")
+			if r.URL.Query().Get("device_id") != "dev-1" {
+				t.Errorf("expected device_id=dev-1, got %q", r.URL.Query().Get("device_id"))
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(postState)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
@@ -176,12 +192,27 @@ func TestShuffleCmd_Disabled(t *testing.T) {
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
 	var gotState string
+	postState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying:    true,
+		ShuffleState: false,
+		Device:       spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true},
+	})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotState = r.URL.Query().Get("state")
-		if r.URL.Query().Get("device_id") != "" {
-			t.Errorf("expected no device_id, got %q", r.URL.Query().Get("device_id"))
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/shuffle":
+			gotState = r.URL.Query().Get("state")
+			if r.URL.Query().Get("device_id") != "" {
+				t.Errorf("expected no device_id, got %q", r.URL.Query().Get("device_id"))
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(postState)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
@@ -223,10 +254,25 @@ func TestRepeatCmd_Off(t *testing.T) {
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
 	var gotState, gotDevice string
+	postState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying:   true,
+		RepeatState: "off",
+		Device:      spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true},
+	})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotState = r.URL.Query().Get("state")
-		gotDevice = r.URL.Query().Get("device_id")
-		w.WriteHeader(http.StatusNoContent)
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/repeat":
+			gotState = r.URL.Query().Get("state")
+			gotDevice = r.URL.Query().Get("device_id")
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(postState)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
@@ -258,10 +304,25 @@ func TestRepeatCmd_Context_NoDevice(t *testing.T) {
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
 	var gotState, gotDevice string
+	postState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying:   true,
+		RepeatState: "context",
+		Device:      spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true},
+	})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotState = r.URL.Query().Get("state")
-		gotDevice = r.URL.Query().Get("device_id")
-		w.WriteHeader(http.StatusNoContent)
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/repeat":
+			gotState = r.URL.Query().Get("state")
+			gotDevice = r.URL.Query().Get("device_id")
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(postState)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)

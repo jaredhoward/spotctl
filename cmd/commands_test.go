@@ -61,13 +61,18 @@ func TestPlayCmdRunE_NoDevice(t *testing.T) {
 	resetPlayCmdFlags(t)
 
 	playCalled := false
-	snapshotState, _ := json.Marshal(spotify.PlaybackState{IsPlaying: false})
+	preState, _ := json.Marshal(spotify.PlaybackState{IsPlaying: false, Device: spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true}})
+	postState, _ := json.Marshal(spotify.PlaybackState{IsPlaying: true, Device: spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true}})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/":
-			// Snapshot call from Play.Dispatch (no ContextURI path).
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(snapshotState)
+			if playCalled {
+				w.Write(postState)
+			} else {
+				w.Write(preState)
+			}
 		case r.Method == http.MethodPut && r.URL.Path == "/play":
 			playCalled = true
 			if r.URL.Query().Get("device_id") != "" {
@@ -104,13 +109,18 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 	resetPlayCmdFlags(t)
 
 	playCalled := false
-	snapshotState, _ := json.Marshal(spotify.PlaybackState{IsPlaying: false})
+	preState, _ := json.Marshal(spotify.PlaybackState{IsPlaying: false, Device: spotify.Device{ID: "", Name: "Dev", Type: "Speaker"}})
+	postState, _ := json.Marshal(spotify.PlaybackState{IsPlaying: true, Device: spotify.Device{ID: "device-1", Name: "Dev", Type: "Speaker", IsActive: true}})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/":
-			// Snapshot call from Play.Dispatch (DeviceID set, no ContextURI).
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(snapshotState)
+			if playCalled {
+				w.Write(postState)
+			} else {
+				w.Write(preState)
+			}
 		case r.Method == http.MethodPut && r.URL.Path == "/play":
 			playCalled = true
 			if r.URL.Query().Get("device_id") != "device-1" {
@@ -159,19 +169,35 @@ func TestTransferCmdRunE_Success(t *testing.T) {
 	transferPlay = true
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
+	transferCalled := false
+	postState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying: true,
+		Device:    spotify.Device{ID: "device-1", Name: "Target", Type: "Speaker", IsActive: true},
+	})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var payload map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatal(err)
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/":
+			var payload map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["play"] != true {
+				t.Fatalf("expected play=true, got %v", payload["play"])
+			}
+			ids, _ := payload["device_ids"].([]interface{})
+			if len(ids) != 1 || ids[0] != "device-1" {
+				t.Fatalf("unexpected device_ids: %v", payload["device_ids"])
+			}
+			transferCalled = true
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(postState)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		if payload["play"] != true {
-			t.Fatalf("expected play=true, got %v", payload["play"])
-		}
-		ids, _ := payload["device_ids"].([]interface{})
-		if len(ids) != 1 || ids[0] != "device-1" {
-			t.Fatalf("unexpected device_ids: %v", payload["device_ids"])
-		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
@@ -179,6 +205,9 @@ func TestTransferCmdRunE_Success(t *testing.T) {
 
 	if err := transferCmd.RunE(transferCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !transferCalled {
+		t.Error("expected transfer API to be called")
 	}
 }
 
@@ -221,14 +250,30 @@ func TestVolumeCmdRunE_Success(t *testing.T) {
 	}
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
+	volumeCalled := false
+	postState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying: true,
+		Device:    spotify.Device{ID: "device-1", Name: "Dev", Type: "Speaker", IsActive: true, VolumePercent: 42},
+	})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("device_id") != "device-1" {
-			t.Errorf("expected device_id=device-1, got %q", r.URL.Query().Get("device_id"))
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/volume":
+			if r.URL.Query().Get("device_id") != "device-1" {
+				t.Errorf("expected device_id=device-1, got %q", r.URL.Query().Get("device_id"))
+			}
+			if r.URL.Query().Get("volume_percent") != "42" {
+				t.Errorf("expected volume_percent=42, got %q", r.URL.Query().Get("volume_percent"))
+			}
+			volumeCalled = true
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(postState)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		if r.URL.Query().Get("volume_percent") != "42" {
-			t.Errorf("expected volume_percent=42, got %q", r.URL.Query().Get("volume_percent"))
-		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
@@ -236,6 +281,9 @@ func TestVolumeCmdRunE_Success(t *testing.T) {
 
 	if err := volumeCmd.RunE(volumeCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !volumeCalled {
+		t.Error("expected volume API to be called")
 	}
 }
 

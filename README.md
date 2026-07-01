@@ -186,6 +186,8 @@ To use a param value inside a command, use `{{ name }}` syntax:
 | `spotctl transfer` | Transfer playback to a Spotify Connect device |
 | `spotctl devices` | List available Spotify Connect devices |
 | `spotctl status` | Show current Spotify playback status |
+
+All playback commands (`play`, `pause`, `next`, `previous`, `shuffle`, `repeat`, `volume`, `transfer`) print the current playback status after the action completes, so you always know what the player is doing. Output is the same format as `spotctl status`.
 | `spotctl setup` | Interactive setup and OAuth flow |
 | `spotctl version` | Print the version |
 

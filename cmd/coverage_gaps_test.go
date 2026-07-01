@@ -102,10 +102,25 @@ func TestPlayCmdRunE_WithAlbum(t *testing.T) {
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
 	var gotBody string
+	postState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying: true,
+		Device:    spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true},
+		Context:   &spotify.PlaybackContext{URI: "spotify:album:al123"},
+	})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := readBody(r)
-		gotBody = b
-		w.WriteHeader(http.StatusNoContent)
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/play":
+			b, _ := readBody(r)
+			gotBody = b
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(postState)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
@@ -135,10 +150,25 @@ func TestPlayCmdRunE_WithTrack(t *testing.T) {
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
 	var gotBody string
+	postState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying: true,
+		Device:    spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true},
+		Context:   &spotify.PlaybackContext{URI: "spotify:track:tr456"},
+	})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := readBody(r)
-		gotBody = b
-		w.WriteHeader(http.StatusNoContent)
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/play":
+			b, _ := readBody(r)
+			gotBody = b
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(postState)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)

@@ -32,30 +32,33 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	printStatus(playback)
+	return nil
+}
+
+func printStatus(state *spotify.PlaybackState) {
 	playing := "paused"
-	if playback.IsPlaying {
+	if state.IsPlaying {
 		playing = "playing"
 	}
 
-	fmt.Printf("Device: %s (%s) %s\n", playback.Device.Name, playback.Device.Type, deviceActivity(playback.Device.IsActive))
+	fmt.Printf("Device: %s (%s) %s\n", state.Device.Name, state.Device.Type, deviceActivity(state.Device.IsActive))
 	fmt.Printf("Status: %s | shuffle: %t | repeat: %s | volume: %d%%\n",
 		playing,
-		playback.ShuffleState,
-		playback.RepeatState,
-		playback.Device.VolumePercent,
+		state.ShuffleState,
+		state.RepeatState,
+		state.Device.VolumePercent,
 	)
 
-	if playback.Item != nil {
-		fmt.Printf("Track: %s\n", playback.Item.Name)
-		fmt.Printf("Artists: %s\n", joinArtists(playback.Item.Artists))
-		fmt.Printf("Progress: %s / %s\n", formatDurationMS(playback.ProgressMS), formatDurationMS(playback.Item.DurationMS))
+	if state.Item != nil {
+		fmt.Printf("Track: %s\n", state.Item.Name)
+		fmt.Printf("Artists: %s\n", joinArtists(state.Item.Artists))
+		fmt.Printf("Progress: %s / %s\n", formatDurationMS(state.ProgressMS), formatDurationMS(state.Item.DurationMS))
 	}
 
-	if playback.Context != nil && playback.Context.URI != "" {
-		fmt.Printf("Context: %s\n", playback.Context.URI)
+	if state.Context != nil && state.Context.URI != "" {
+		fmt.Printf("Context: %s\n", state.Context.URI)
 	}
-
-	return nil
 }
 
 func joinArtists(artists []spotify.Artist) string {

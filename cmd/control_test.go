@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/jaredhoward/spotctl/config"
@@ -21,26 +22,44 @@ func TestPauseCmd_Success(t *testing.T) {
 	pauseDeviceID = "dev-1"
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
-	called := false
+	pauseCalled := false
+	pausedState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying: false,
+		Device:    spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true, VolumePercent: 50},
+	})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		if r.Method != http.MethodPut || r.URL.Path != "/pause" {
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/pause":
+			if r.URL.Query().Get("device_id") != "dev-1" {
+				t.Errorf("expected device_id=dev-1, got %q", r.URL.Query().Get("device_id"))
+			}
+			pauseCalled = true
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			// Confirmation poll and final status fetch — return paused state.
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(pausedState)
+		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		if r.URL.Query().Get("device_id") != "dev-1" {
-			t.Errorf("expected device_id=dev-1, got %q", r.URL.Query().Get("device_id"))
-		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	cleanup := wireClient(t, srv)
 	defer cleanup()
 
-	if err := pauseCmd.RunE(pauseCmd, nil); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !called {
+	output := captureOutput(t, func() {
+		if err := pauseCmd.RunE(pauseCmd, nil); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if !pauseCalled {
 		t.Error("expected pause API to be called")
+	}
+	if !strings.Contains(output, "paused") {
+		t.Errorf("expected status output to contain 'paused', got: %q", output)
 	}
 }
 
@@ -55,17 +74,29 @@ func TestNextCmd_Success(t *testing.T) {
 	nextDeviceID = "dev-1"
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
-	actionCalled := false
-	snapshotState, _ := json.Marshal(spotify.PlaybackState{Item: &spotify.Track{URI: "spotify:track:prior"}})
+	nextCalled := false
+	preState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying: true,
+		Device:    spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true},
+		Item:      &spotify.Track{URI: "spotify:track:before", Name: "Before", DurationMS: 180000, Artists: []spotify.Artist{{Name: "Artist"}}},
+	})
+	postState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying: true,
+		Device:    spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true},
+		Item:      &spotify.Track{URI: "spotify:track:after", Name: "After", DurationMS: 180000, Artists: []spotify.Artist{{Name: "Artist"}}},
+	})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/":
-			// Snapshot call from Next.Dispatch.
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(snapshotState)
+			if nextCalled {
+				w.Write(postState)
+			} else {
+				w.Write(preState)
+			}
 		case r.Method == http.MethodPost && r.URL.Path == "/next":
-			actionCalled = true
+			nextCalled = true
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -76,11 +107,17 @@ func TestNextCmd_Success(t *testing.T) {
 	cleanup := wireClient(t, srv)
 	defer cleanup()
 
-	if err := nextCmd.RunE(nextCmd, nil); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !actionCalled {
+	output := captureOutput(t, func() {
+		if err := nextCmd.RunE(nextCmd, nil); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if !nextCalled {
 		t.Error("expected next API to be called")
+	}
+	if !strings.Contains(output, "After") {
+		t.Errorf("expected new track name in status output, got: %q", output)
 	}
 }
 
@@ -95,17 +132,29 @@ func TestPreviousCmd_Success(t *testing.T) {
 	previousDeviceID = "dev-1"
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
 
-	actionCalled := false
-	snapshotState, _ := json.Marshal(spotify.PlaybackState{Item: &spotify.Track{URI: "spotify:track:prior"}})
+	previousCalled := false
+	preState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying: true,
+		Device:    spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true},
+		Item:      &spotify.Track{URI: "spotify:track:current", Name: "Current", DurationMS: 180000, Artists: []spotify.Artist{{Name: "Artist"}}},
+	})
+	postState, _ := json.Marshal(spotify.PlaybackState{
+		IsPlaying: true,
+		Device:    spotify.Device{Name: "Dev", Type: "Speaker", IsActive: true},
+		Item:      &spotify.Track{URI: "spotify:track:prior", Name: "Prior", DurationMS: 180000, Artists: []spotify.Artist{{Name: "Artist"}}},
+	})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/":
-			// Snapshot call from Previous.Dispatch.
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(snapshotState)
+			if previousCalled {
+				w.Write(postState)
+			} else {
+				w.Write(preState)
+			}
 		case r.Method == http.MethodPost && r.URL.Path == "/previous":
-			actionCalled = true
+			previousCalled = true
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -116,10 +165,16 @@ func TestPreviousCmd_Success(t *testing.T) {
 	cleanup := wireClient(t, srv)
 	defer cleanup()
 
-	if err := previousCmd.RunE(previousCmd, nil); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !actionCalled {
+	output := captureOutput(t, func() {
+		if err := previousCmd.RunE(previousCmd, nil); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if !previousCalled {
 		t.Error("expected previous API to be called")
+	}
+	if !strings.Contains(output, "Prior") {
+		t.Errorf("expected prior track name in status output, got: %q", output)
 	}
 }
