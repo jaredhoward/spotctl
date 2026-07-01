@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test with coverage
+        run: make test
+
+      # Coverage badges aren't native to GitHub, but a minimum-coverage gate
+      # is easy to enforce without one. Bump COVERAGE_THRESHOLD as the
+      # baseline improves; never lower it to make a failing PR pass.
+      - name: Enforce coverage threshold
+        env:
+          COVERAGE_THRESHOLD: "85"
+        run: |
+          total=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}' | tr -d '%')
+          echo "total coverage: ${total}%"
+          awk -v t="$total" -v th="$COVERAGE_THRESHOLD" \
+            'BEGIN { exit (t+0 < th+0) }' \
+            || { echo "coverage ${total}% is below the ${COVERAGE_THRESHOLD}% threshold"; exit 1; }
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
