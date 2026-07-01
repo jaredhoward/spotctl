@@ -60,15 +60,30 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 			if consecutiveErrors >= maxConsecutiveErrors {
 				return fmt.Errorf("polling aborted after %d consecutive errors: %w", consecutiveErrors, err)
 			}
-			time.Sleep(pollInterval)
+			if err := sleepOrDone(ctx, pollInterval); err != nil {
+				return err
+			}
 			continue
 		}
 		consecutiveErrors = 0
 		if a.Confirmed(state) {
 			return nil
 		}
-		time.Sleep(pollInterval)
+		if err := sleepOrDone(ctx, pollInterval); err != nil {
+			return err
+		}
 	}
 
 	return &TimeoutError{Timeout: timeout, ActionLabel: a.Label()}
+}
+
+// sleepOrDone waits for d, returning ctx.Err() early if ctx is cancelled
+// before the wait completes.
+func sleepOrDone(ctx context.Context, d time.Duration) error {
+	select {
+	case <-time.After(d):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
