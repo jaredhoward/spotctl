@@ -29,7 +29,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          args=(--title "${{ github.ref_name }}" --generate-notes)
+          # v0.x is still an unstable, actively-changing API — mark it as
+          # such until the project moves to v1. Drop this once v1.0.0 ships.
+          if [[ "${{ github.ref_name }}" == v0.* ]]; then
+            args+=(--prerelease)
+          fi
           gh release create "${{ github.ref_name }}" \
             spotctl-linux-arm64 \
-            --title "${{ github.ref_name }}" \
-            --generate-notes
+            "${args[@]}"
