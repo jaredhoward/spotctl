@@ -8,7 +8,7 @@ A Spotify Connect controller CLI, built in Go.
 
 ## Requirements
 
-- Go 1.21+
+- Go 1.26+
 - A Spotify account
 - A Spotify app created at [developer.spotify.com](https://developer.spotify.com/dashboard)
 
@@ -23,7 +23,7 @@ go mod tidy
 make build
 ```
 
-### Cross-compile for Linux x86_64 (e.g. Home Assistant Green)
+### Cross-compile for Linux arm64 (e.g. Home Assistant Green)
 
 ```bash
 make build-ha-green
