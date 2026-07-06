@@ -54,6 +54,9 @@ func Build(name string, set config.Set, cfg *config.Config, depth int, args map[
 		if label == "" {
 			label = fmt.Sprintf("command %d (%s)", i+1, cmd.Action)
 		}
+		if detail := ActionDetail(cmd); detail != "" {
+			label = fmt.Sprintf("%s [%s]", label, detail)
+		}
 
 		pollInterval := cfg.PlaybackPollIntervalDuration()
 		timeout := cmd.EffectiveTimeout(set.Timeout, config.DefaultConfirmTimeout)

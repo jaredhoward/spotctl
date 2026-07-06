@@ -260,6 +260,67 @@ func TestBuildParams(t *testing.T) {
 
 // ----- pool params ------------------------------------------------------------
 
+func TestBuild_StepLabelIncludesResolvedActionDetail(t *testing.T) {
+	set := config.Set{
+		Commands: []config.Command{
+			{Action: "play", Params: config.CommandParams{URI: "spotify:playlist:abc123"}, Confirm: new(false)},
+		},
+	}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	label := rs.Steps[0].label
+	if !strings.Contains(label, "uri=spotify:playlist:abc123") {
+		t.Errorf("expected resolved uri in step label, got %q", label)
+	}
+}
+
+func TestBuild_StepLabelWithNameStillIncludesResolvedActionDetail(t *testing.T) {
+	set := config.Set{
+		Commands: []config.Command{
+			{Action: "play", Name: "nightly playlist", Params: config.CommandParams{URI: "spotify:playlist:abc123"}, Confirm: new(false)},
+		},
+	}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	label := rs.Steps[0].label
+	if !strings.Contains(label, "nightly playlist") || !strings.Contains(label, "uri=spotify:playlist:abc123") {
+		t.Errorf("expected both custom name and resolved uri in step label, got %q", label)
+	}
+}
+
+func TestBuild_StepLabelWithPoolShowsActualPick(t *testing.T) {
+	oldNow := config.Now
+	defer func() { config.Now = oldNow }()
+	config.Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
+
+	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
+	set := config.Set{
+		Params: map[string]config.SetParam{"uri": {Pool: pool}},
+		Commands: []config.Command{
+			{Action: "play", Params: config.CommandParams{URI: "{{ uri }}"}, Confirm: new(false)},
+		},
+	}
+	rs, err := Build("jareds_sleep", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	label := rs.Steps[0].label
+	found := false
+	for _, p := range pool {
+		if strings.Contains(label, "uri="+p) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected step label to contain the actual pool pick (not the raw {{ uri }} template), got %q", label)
+	}
+}
+
 func TestBuildParams_PoolResolvesToPoolMember(t *testing.T) {
 	oldNow := config.Now
 	defer func() { config.Now = oldNow }()

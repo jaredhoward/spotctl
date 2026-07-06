@@ -16,12 +16,13 @@ func ParamLabel(s string) string {
 	return templateExpr.ReplaceAllString(s, "<$1>")
 }
 
-// CommandLabel returns a human-readable description of a command for logging
-// and the sets listing.
-func CommandLabel(n int, c config.Command) string {
+// actionDetail returns the action-specific portion of a command's label
+// (e.g. "uri=..." for play, "level=..." for volume). By the time this is
+// called from Build, {{ }} placeholders in c.Params have already been
+// resolved to their run-time values, so this reports what will actually
+// happen — e.g. which pool-picked playlist is about to play.
+func actionDetail(c config.Command) []string {
 	var parts []string
-	parts = append(parts, c.Action)
-
 	switch c.Action {
 	case "play":
 		switch {
@@ -62,6 +63,13 @@ func CommandLabel(n int, c config.Command) string {
 			parts = append(parts, fmt.Sprintf("%s=%s", k, ParamLabel(v)))
 		}
 	}
+	return parts
+}
+
+// CommandLabel returns a human-readable description of a command for the
+// sets listing (spotctl sets).
+func CommandLabel(n int, c config.Command) string {
+	parts := append([]string{c.Action}, actionDetail(c)...)
 
 	if c.DeviceID != "" {
 		parts = append(parts, fmt.Sprintf("device=%s", ParamLabel(c.DeviceID)))
@@ -69,6 +77,19 @@ func CommandLabel(n int, c config.Command) string {
 	parts = append(parts, fmt.Sprintf("confirm=%v", c.EffectiveConfirm(nil)))
 	if c.Name != "" {
 		return fmt.Sprintf("%s (%s)", strings.Join(parts, " "), c.Name)
+	}
+	return strings.Join(parts, " ")
+}
+
+// ActionDetail returns the resolved action-specific and device details for c
+// (e.g. "uri=... device=..."), without the confirm/name suffix CommandLabel
+// adds. Used for RunSet's dispatch log, which already logs the authoritative
+// confirm value sourced from ExecuteOptions rather than recomputing one from
+// a nil set-level default the way CommandLabel does for the static listing.
+func ActionDetail(c config.Command) string {
+	parts := actionDetail(c)
+	if c.DeviceID != "" {
+		parts = append(parts, fmt.Sprintf("device=%s", ParamLabel(c.DeviceID)))
 	}
 	return strings.Join(parts, " ")
 }
