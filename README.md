@@ -76,24 +76,73 @@ device_names:
   7b9a...: "Kitchen Echo"
 ```
 
-### 3. Add sets to `config.yaml`
+## Commands
 
-Sets are named sequences of Spotify commands. A set can be as simple as a single play command or as complex as a multi-step routine with confirmation and error handling. Run a set with `spotctl run <name>`, or list all configured sets with `spotctl sets`.
+| Command | Description |
+|---|---|
+| `spotctl sets` | List all configured sets |
+| `spotctl run <set>` | Run a named set of commands |
+| `spotctl play` | Start or resume Spotify playback |
+| `spotctl pause` | Pause Spotify playback |
+| `spotctl next` | Skip to the next track |
+| `spotctl previous` | Return to the previous track |
+| `spotctl shuffle` | Enable or disable shuffle |
+| `spotctl repeat` | Set repeat mode |
+| `spotctl volume` | Set Spotify playback volume |
+| `spotctl transfer` | Transfer playback to a Spotify Connect device |
+| `spotctl devices` | List available Spotify Connect devices |
+| `spotctl status` | Show current Spotify playback status |
+| `spotctl setup` | Interactive setup and OAuth flow |
+| `spotctl version` | Print the version |
+
+All playback commands (`play`, `pause`, `next`, `previous`, `shuffle`, `repeat`, `volume`, `transfer`) print the current playback status after the action completes, so you always know what the player is doing. Output is the same format as `spotctl status`.
+
+### Examples
+
+List configured sets:
+```bash
+spotctl sets --config ./config.yaml
+```
+
+Run a set:
+```bash
+spotctl run random_sleep --config ./config.yaml
+```
+
+One-off playback commands:
+```bash
+spotctl play --uri spotify:playlist:PLAYLIST_ID --config ./config.yaml
+spotctl play --device DEVICE_ID --playlist PLAYLIST_ID --config ./config.yaml
+spotctl play --device DEVICE_ID --track TRACK_ID --config ./config.yaml
+spotctl play --device DEVICE_ID --album ALBUM_ID --config ./config.yaml
+```
+
+Playback control:
+```bash
+spotctl pause --config ./config.yaml
+spotctl pause --device DEVICE_ID --config ./config.yaml
+spotctl next --device DEVICE_ID --config ./config.yaml
+spotctl previous --device DEVICE_ID --config ./config.yaml
+spotctl shuffle --device DEVICE_ID --config ./config.yaml
+spotctl shuffle --device DEVICE_ID --enabled=false --config ./config.yaml
+spotctl repeat --device DEVICE_ID --state context --config ./config.yaml
+spotctl repeat --device DEVICE_ID --state off --config ./config.yaml
+spotctl volume --device DEVICE_ID --level 50 --config ./config.yaml
+spotctl transfer --device DEVICE_ID --play --config ./config.yaml
+```
+
+## Sets
+
+Sets are optional — if you just want manual playback control, the commands above are all you need. A set is a named, reusable routine (e.g. "play this playlist, shuffle, set the volume") that can be as simple as a single play command or as complex as a multi-step routine with confirmation and error handling. Trigger one with `spotctl run <name>` or from an automation; list all configured sets with `spotctl sets`.
 
 ```yaml
 sets:
-  random_sleep:
+  evening_playlist:
     device_id: DEVICE_ID
-    params:
-      uri:
-        pool:
-          - spotify:playlist:PLAYLIST_ID_1
-          - spotify:playlist:PLAYLIST_ID_2
-          - spotify:playlist:PLAYLIST_ID_3
     commands:
       - action: play
         params:
-          uri: '{{ uri }}'
+          uri: spotify:playlist:PLAYLIST_ID
         timeout: 20s
         on_timeout: fail
       - action: shuffle
@@ -104,7 +153,7 @@ sets:
           state: context
 ```
 
-#### Set-level fields
+### Set-level fields
 
 | Field | Default | Description |
 |---|---|---|
@@ -115,7 +164,7 @@ sets:
 | `timeout` | `15s` | Default timeout for all commands in the set. Commands may override it. |
 | `params` | — | Named parameters the set accepts. Each entry has `required: true/false`, an optional `default`, or a `pool` (list of candidate values, picked automatically — see below). `pool` is mutually exclusive with `required`/`default`. Callers supply non-pool values via `--<name>` flags on the CLI, or as sibling keys under `run_set` params. |
 
-#### Commands
+### Set commands
 
 Each command in a set has:
 
@@ -130,7 +179,7 @@ Each command in a set has:
 | `on_error` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
 | `on_timeout` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
 
-#### Params reference
+### Params reference
 
 | Action | Params | Allowed values | Confirms by checking |
 |---|---|---|---|
@@ -145,14 +194,14 @@ Each command in a set has:
 | `sleep` | `duration` *(required)* | duration string like `30s` or `1m` | — |
 | `run_set` | `set` *(required)*, plus declared target params | target set params depend on the inner set | inner set completes |
 
-##### Action parameter details
+#### Action parameter details
 
 - `play`: use exactly one of `uri`, `playlist`, `track`, `album`, or `artist`. The latter four are shorthand for `spotify:TYPE:ID` URIs.
 - `transfer.play`: when `true`, confirmation waits for the target device to become active and playback to start.
 - `sleep.duration`: no Spotify API call is made and `confirm` has no effect.
 - `run_set.set`: target set name. Any other sibling params are passed to the inner set if declared there.
 
-##### For `run_set`
+#### For `run_set`
 
 Pass values to the target set's declared params as sibling keys alongside `set`:
 
@@ -176,17 +225,32 @@ To use a param value inside a command, use `{{ name }}` syntax:
 
 `spotctl sets` renders these as `<name>` (e.g. `uri=<uri>`), indicating the value is supplied at call time. A concrete value (e.g. `level=35`) means a literal or default is set directly in the config.
 
-##### Randomized picks with `pool`
+#### Randomized picks with `pool`
 
-A declared param can list a `pool` of candidate values instead of a fixed `default`:
+A declared param can list a `pool` of candidate values instead of a fixed `default`. For example, a `random_sleep` set that rotates through several playlists instead of always playing the same one:
 
 ```yaml
-params:
-  uri:
-    pool:
-      - spotify:playlist:AAAAAAAAAAAAAAAAAAAA
-      - spotify:playlist:BBBBBBBBBBBBBBBBBBBB
-      - spotify:playlist:CCCCCCCCCCCCCCCCCCCC
+sets:
+  random_sleep:
+    device_id: DEVICE_ID
+    params:
+      uri:
+        pool:
+          - spotify:playlist:AAAAAAAAAAAAAAAAAAAA
+          - spotify:playlist:BBBBBBBBBBBBBBBBBBBB
+          - spotify:playlist:CCCCCCCCCCCCCCCCCCCC
+    commands:
+      - action: play
+        params:
+          uri: '{{ uri }}'
+        timeout: 20s
+        on_timeout: fail
+      - action: shuffle
+        params:
+          enabled: true
+      - action: repeat
+        params:
+          state: context
 ```
 
 Each run picks one entry, resolved the same way as `default` (i.e. usable via `{{ uri }}` in commands or forwarded to a nested `run_set`). The pick is deterministic based on the current calendar date — no random seed or file state is involved, so nothing is written to `config.yaml`:
@@ -197,7 +261,7 @@ Each run picks one entry, resolved the same way as `default` (i.e. usable via `{
 
 `pool` is mutually exclusive with `default` and `required` on the same param — `spotctl` rejects config where both are set.
 
-##### Overriding the device at runtime
+#### Overriding the device at runtime
 
 `device_id` (on a set or a command) can reference a declared param with `{{ name }}`, exactly like `uri` or `level`. Declare the param and point `device_id` at it:
 
@@ -241,61 +305,6 @@ sets:
 ```
 
 `spotctl run jareds_sleep --device X` then reaches `jared_bedroom_play` without `jared_bedroom_play` needing any changes beyond declaring its own `device` param. If the caller doesn't pass `--device` and nothing forwards one, each set's own `device_id`/default still applies — forwarding never overwrites a target set's default with an empty value.
-
-## Commands
-
-| Command | Description |
-|---|---|
-| `spotctl sets` | List all configured sets |
-| `spotctl run <set>` | Run a named set of commands |
-| `spotctl play` | Start or resume Spotify playback |
-| `spotctl pause` | Pause Spotify playback |
-| `spotctl next` | Skip to the next track |
-| `spotctl previous` | Return to the previous track |
-| `spotctl shuffle` | Enable or disable shuffle |
-| `spotctl repeat` | Set repeat mode |
-| `spotctl volume` | Set Spotify playback volume |
-| `spotctl transfer` | Transfer playback to a Spotify Connect device |
-| `spotctl devices` | List available Spotify Connect devices |
-| `spotctl status` | Show current Spotify playback status |
-
-All playback commands (`play`, `pause`, `next`, `previous`, `shuffle`, `repeat`, `volume`, `transfer`) print the current playback status after the action completes, so you always know what the player is doing. Output is the same format as `spotctl status`.
-| `spotctl setup` | Interactive setup and OAuth flow |
-| `spotctl version` | Print the version |
-
-### Examples
-
-List configured sets:
-```bash
-spotctl sets --config ./config.yaml
-```
-
-Run a set:
-```bash
-spotctl run random_sleep --config ./config.yaml
-```
-
-One-off playback commands:
-```bash
-spotctl play --uri spotify:playlist:PLAYLIST_ID --config ./config.yaml
-spotctl play --device DEVICE_ID --playlist PLAYLIST_ID --config ./config.yaml
-spotctl play --device DEVICE_ID --track TRACK_ID --config ./config.yaml
-spotctl play --device DEVICE_ID --album ALBUM_ID --config ./config.yaml
-```
-
-Playback control:
-```bash
-spotctl pause --config ./config.yaml
-spotctl pause --device DEVICE_ID --config ./config.yaml
-spotctl next --device DEVICE_ID --config ./config.yaml
-spotctl previous --device DEVICE_ID --config ./config.yaml
-spotctl shuffle --device DEVICE_ID --config ./config.yaml
-spotctl shuffle --device DEVICE_ID --enabled=false --config ./config.yaml
-spotctl repeat --device DEVICE_ID --state context --config ./config.yaml
-spotctl repeat --device DEVICE_ID --state off --config ./config.yaml
-spotctl volume --device DEVICE_ID --level 50 --config ./config.yaml
-spotctl transfer --device DEVICE_ID --play --config ./config.yaml
-```
 
 ## Flags
 
