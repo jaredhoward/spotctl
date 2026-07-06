@@ -84,6 +84,36 @@ func TestSetsCmd_WithSets(t *testing.T) {
 	}
 }
 
+func TestSetsCmd_TemplatedDeviceIDRendersAsPlaceholder(t *testing.T) {
+	oldConfigPath := configPath
+	defer func() { configPath = oldConfigPath }()
+
+	cfg := &config.Config{
+		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
+		Sets: map[string]config.Set{
+			"jared_bedroom_play": {
+				DeviceID: "{{ device }}",
+				Params:   map[string]config.SetParam{"device": {Default: "dev-abc"}},
+				Commands: []config.Command{{Action: "pause"}},
+			},
+		},
+	}
+	configPath = writeTempConfig(t, cfg)
+
+	output := captureOutput(t, func() {
+		if err := setsCmd.RunE(setsCmd, nil); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "device: <device>") {
+		t.Errorf("expected templated device_id to render as <device>, got: %q", output)
+	}
+	if strings.Contains(output, "{{ device }}") {
+		t.Errorf("expected raw {{ device }} placeholder not to leak into output, got: %q", output)
+	}
+}
+
 func TestSetsCmd_OutputIsSorted(t *testing.T) {
 	oldConfigPath := configPath
 	defer func() { configPath = oldConfigPath }()

@@ -39,7 +39,7 @@ func runSets(cmd *cobra.Command, args []string) error {
 
 	for _, name := range names {
 		set := cfg.Sets[name]
-		device := set.DeviceID
+		device := sets.ParamLabel(set.DeviceID)
 		if device == "" {
 			device = "(active device)"
 		}

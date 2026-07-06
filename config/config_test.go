@@ -294,3 +294,43 @@ func TestValidateMultipleMissingFields(t *testing.T) {
 		}
 	}
 }
+
+func validConfigWithParam(param SetParam) *Config {
+	return &Config{
+		ClientID: "id", ClientSecret: "s", RefreshToken: "r",
+		Sets: map[string]Set{
+			"jareds_sleep": {
+				Params: map[string]SetParam{"uri": param},
+			},
+		},
+	}
+}
+
+func TestValidate_PoolAndDefaultRejected(t *testing.T) {
+	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}, Default: "a"})
+	err := cfg.validate()
+	if err == nil {
+		t.Fatal("expected validation error for pool+default")
+	}
+	if !strings.Contains(err.Error(), "jareds_sleep") || !strings.Contains(err.Error(), "uri") {
+		t.Errorf("expected set/param name in error, got: %v", err)
+	}
+}
+
+func TestValidate_PoolAndRequiredRejected(t *testing.T) {
+	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}, Required: true})
+	err := cfg.validate()
+	if err == nil {
+		t.Fatal("expected validation error for pool+required")
+	}
+	if !strings.Contains(err.Error(), "jareds_sleep") || !strings.Contains(err.Error(), "uri") {
+		t.Errorf("expected set/param name in error, got: %v", err)
+	}
+}
+
+func TestValidate_PoolAloneIsValid(t *testing.T) {
+	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}})
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("expected pool alone to be valid, got: %v", err)
+	}
+}

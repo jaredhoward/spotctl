@@ -3,6 +3,7 @@ package sets
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/spotify"
@@ -257,6 +258,152 @@ func TestBuildParams(t *testing.T) {
 	})
 }
 
+// ----- pool params ------------------------------------------------------------
+
+func TestBuild_StepLabelIncludesResolvedActionDetail(t *testing.T) {
+	set := config.Set{
+		Commands: []config.Command{
+			{Action: "play", Params: config.CommandParams{URI: "spotify:playlist:abc123"}, Confirm: new(false)},
+		},
+	}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	label := rs.Steps[0].label
+	if !strings.Contains(label, "uri=spotify:playlist:abc123") {
+		t.Errorf("expected resolved uri in step label, got %q", label)
+	}
+}
+
+func TestBuild_StepLabelWithNameStillIncludesResolvedActionDetail(t *testing.T) {
+	set := config.Set{
+		Commands: []config.Command{
+			{Action: "play", Name: "nightly playlist", Params: config.CommandParams{URI: "spotify:playlist:abc123"}, Confirm: new(false)},
+		},
+	}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	label := rs.Steps[0].label
+	if !strings.Contains(label, "nightly playlist") || !strings.Contains(label, "uri=spotify:playlist:abc123") {
+		t.Errorf("expected both custom name and resolved uri in step label, got %q", label)
+	}
+}
+
+func TestBuild_StepLabelWithPoolShowsActualPick(t *testing.T) {
+	oldNow := config.Now
+	defer func() { config.Now = oldNow }()
+	config.Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
+
+	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
+	set := config.Set{
+		Params: map[string]config.SetParam{"uri": {Pool: pool}},
+		Commands: []config.Command{
+			{Action: "play", Params: config.CommandParams{URI: "{{ uri }}"}, Confirm: new(false)},
+		},
+	}
+	rs, err := Build("jareds_sleep", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	label := rs.Steps[0].label
+	found := false
+	for _, p := range pool {
+		if strings.Contains(label, "uri="+p) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected step label to contain the actual pool pick (not the raw {{ uri }} template), got %q", label)
+	}
+}
+
+func TestBuildParams_PoolResolvesToPoolMember(t *testing.T) {
+	oldNow := config.Now
+	defer func() { config.Now = oldNow }()
+	config.Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
+
+	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
+	set := config.Set{
+		Params: map[string]config.SetParam{
+			"uri": {Pool: pool},
+		},
+		Commands: []config.Command{
+			{Action: "play", Params: config.CommandParams{URI: `{{ uri }}`}, Confirm: new(false)},
+		},
+	}
+
+	rs, err := Build("jareds_sleep", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	play := extractPlay(rs)
+	if play == nil {
+		t.Fatal("no play action found")
+	}
+	found := false
+	for _, p := range pool {
+		if play.ContextURI == p {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected ContextURI to be a pool member, got %q", play.ContextURI)
+	}
+}
+
+func TestBuildParams_PoolViaNestedRunSetIsScopedToInnerSetName(t *testing.T) {
+	oldNow := config.Now
+	defer func() { config.Now = oldNow }()
+	config.Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
+
+	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
+	inner := config.Set{
+		Params: map[string]config.SetParam{
+			"uri": {Pool: pool},
+		},
+		Commands: []config.Command{
+			{Action: "play", Params: config.CommandParams{URI: `{{ uri }}`}, Confirm: new(false)},
+		},
+	}
+	outer := config.Set{
+		Commands: []config.Command{
+			{Action: "run_set", Params: config.CommandParams{Set: "inner"}},
+		},
+	}
+	cfg := minimalCfg(map[string]config.Set{"outer": outer, "inner": inner})
+
+	rsOuter, err := Build("outer", outer, cfg, 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error building via outer: %v", err)
+	}
+	viaOuter := extractPlay(rsOuter)
+	if viaOuter == nil {
+		t.Fatal("no play action found via outer")
+	}
+
+	// Resolving the inner set directly (as "inner") must produce the same pick
+	// as resolving it through the outer set's run_set, since the pool's hash
+	// seed is scoped to the *inner* set's own name either way.
+	rsDirect, err := Build("inner", inner, cfg, 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error building inner directly: %v", err)
+	}
+	direct := extractPlay(rsDirect)
+	if direct == nil {
+		t.Fatal("no play action found via direct inner build")
+	}
+
+	if viaOuter.ContextURI != direct.ContextURI {
+		t.Errorf("expected pool pick to be scoped to inner set name regardless of caller, got %q via outer vs %q direct",
+			viaOuter.ContextURI, direct.ContextURI)
+	}
+}
+
 // ----- depth limit -----------------------------------------------------------
 
 func TestBuild_MaxDepth(t *testing.T) {
@@ -401,5 +548,161 @@ func TestBuildAction_UnknownDirectly(t *testing.T) {
 	_, err := buildAction(cmd, "", minimalCfg(nil), 0)
 	if err == nil || !strings.Contains(err.Error(), "unknown action") {
 		t.Fatalf("expected unknown action error from buildAction, got %v", err)
+	}
+}
+
+// ----- device_id templating ---------------------------------------------------
+
+func TestBuild_SetLevelDeviceIDTemplated(t *testing.T) {
+	set := config.Set{
+		DeviceID: "{{ device }}",
+		Params: map[string]config.SetParam{
+			"device": {Default: "dev-default"},
+		},
+		Commands: []config.Command{
+			{Action: "pause", Confirm: new(false)},
+		},
+	}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a, ok := rs.Steps[0].action.(*spotify.Pause)
+	if !ok {
+		t.Fatalf("expected *spotify.Pause, got %T", rs.Steps[0].action)
+	}
+	if a.DeviceID != "dev-default" {
+		t.Errorf("DeviceID: got %q, want dev-default", a.DeviceID)
+	}
+}
+
+func TestBuild_SetLevelDeviceIDTemplated_ArgOverride(t *testing.T) {
+	set := config.Set{
+		DeviceID: "{{ device }}",
+		Params: map[string]config.SetParam{
+			"device": {Default: "dev-default"},
+		},
+		Commands: []config.Command{
+			{Action: "pause", Confirm: new(false)},
+		},
+	}
+	rs, err := Build("test", set, minimalCfg(nil), 0, map[string]string{"device": "dev-override"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a := rs.Steps[0].action.(*spotify.Pause)
+	if a.DeviceID != "dev-override" {
+		t.Errorf("DeviceID: got %q, want dev-override", a.DeviceID)
+	}
+}
+
+func TestBuild_CommandLevelDeviceIDOverridesSet(t *testing.T) {
+	set := config.Set{
+		DeviceID: "set-device",
+		Params: map[string]config.SetParam{
+			"device": {Default: "cmd-device"},
+		},
+		Commands: []config.Command{
+			{Action: "pause", DeviceID: "{{ device }}", Confirm: new(false)},
+		},
+	}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a := rs.Steps[0].action.(*spotify.Pause)
+	if a.DeviceID != "cmd-device" {
+		t.Errorf("DeviceID: got %q, want cmd-device (command override)", a.DeviceID)
+	}
+}
+
+func TestBuild_DeviceIDMissingPlaceholderErrors(t *testing.T) {
+	set := config.Set{
+		DeviceID: "{{ undeclared }}",
+		Commands: []config.Command{
+			{Action: "pause"},
+		},
+	}
+	_, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err == nil || !strings.Contains(err.Error(), "undeclared") {
+		t.Fatalf("expected undeclared placeholder error, got %v", err)
+	}
+}
+
+func TestBuild_CommandDeviceIDMissingPlaceholderErrors(t *testing.T) {
+	set := config.Set{
+		Commands: []config.Command{
+			{Action: "pause", DeviceID: "{{ undeclared }}"},
+		},
+	}
+	_, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err == nil || !strings.Contains(err.Error(), "undeclared") {
+		t.Fatalf("expected undeclared placeholder error, got %v", err)
+	}
+}
+
+func TestBuild_RunSet_ForwardsDeviceIDToNestedSet(t *testing.T) {
+	inner := config.Set{
+		Params: map[string]config.SetParam{
+			"device": {Required: true},
+		},
+		Commands: []config.Command{
+			{Action: "play", DeviceID: "{{ device }}", Confirm: new(false)},
+		},
+	}
+	outer := config.Set{
+		Params: map[string]config.SetParam{
+			"device": {Default: "forwarded-device"},
+		},
+		Commands: []config.Command{
+			{Action: "run_set", DeviceID: "{{ device }}", Params: config.CommandParams{Set: "inner"}},
+		},
+	}
+	cfg := minimalCfg(map[string]config.Set{"outer": outer, "inner": inner})
+
+	rs, err := Build("outer", outer, cfg, 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	play := extractPlay(rs)
+	if play == nil {
+		t.Fatal("no play action found in nested RunSet")
+	}
+	if play.DeviceID != "forwarded-device" {
+		t.Errorf("DeviceID: got %q, want forwarded-device", play.DeviceID)
+	}
+}
+
+func TestBuild_RunSet_NoDeviceOverridePreservesInnerDefault(t *testing.T) {
+	inner := config.Set{
+		DeviceID: "{{ device }}",
+		Params: map[string]config.SetParam{
+			"device": {Default: "inner-default-device"},
+		},
+		Commands: []config.Command{
+			{Action: "play", Confirm: new(false)},
+		},
+	}
+	outer := config.Set{
+		// No device_id at all on the outer set or its run_set command — the
+		// forwarded deviceID is empty, so the inner set's own default must
+		// survive untouched (regression guard for the empty-string-overrides
+		// default footgun in ResolveParams).
+		Commands: []config.Command{
+			{Action: "run_set", Params: config.CommandParams{Set: "inner"}},
+		},
+	}
+	cfg := minimalCfg(map[string]config.Set{"outer": outer, "inner": inner})
+
+	rs, err := Build("outer", outer, cfg, 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	play := extractPlay(rs)
+	if play == nil {
+		t.Fatal("no play action found in nested RunSet")
+	}
+	if play.DeviceID != "inner-default-device" {
+		t.Errorf("DeviceID: got %q, want inner-default-device (inner default must survive)", play.DeviceID)
 	}
 }

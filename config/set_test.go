@@ -225,7 +225,7 @@ func TestEffectiveTimeout(t *testing.T) {
 func TestResolveParams(t *testing.T) {
 	t.Run("required present", func(t *testing.T) {
 		s := Set{Params: map[string]SetParam{"uri": {Required: true}}}
-		got, err := s.ResolveParams(map[string]string{"uri": "spotify:playlist:abc"})
+		got, err := s.ResolveParams(map[string]string{"uri": "spotify:playlist:abc"}, "test")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -236,7 +236,7 @@ func TestResolveParams(t *testing.T) {
 
 	t.Run("required missing", func(t *testing.T) {
 		s := Set{Params: map[string]SetParam{"uri": {Required: true}}}
-		_, err := s.ResolveParams(nil)
+		_, err := s.ResolveParams(nil, "test")
 		if err == nil {
 			t.Fatal("expected error for missing required arg")
 		}
@@ -247,7 +247,7 @@ func TestResolveParams(t *testing.T) {
 
 	t.Run("default used when arg absent", func(t *testing.T) {
 		s := Set{Params: map[string]SetParam{"volume": {Default: "35"}}}
-		got, err := s.ResolveParams(nil)
+		got, err := s.ResolveParams(nil, "test")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -258,7 +258,7 @@ func TestResolveParams(t *testing.T) {
 
 	t.Run("arg overrides default", func(t *testing.T) {
 		s := Set{Params: map[string]SetParam{"volume": {Default: "35"}}}
-		got, err := s.ResolveParams(map[string]string{"volume": "50"})
+		got, err := s.ResolveParams(map[string]string{"volume": "50"}, "test")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -269,7 +269,7 @@ func TestResolveParams(t *testing.T) {
 
 	t.Run("unknown arg ignored", func(t *testing.T) {
 		s := Set{Params: map[string]SetParam{"uri": {Required: true}}}
-		got, err := s.ResolveParams(map[string]string{"uri": "x", "unknown": "y"})
+		got, err := s.ResolveParams(map[string]string{"uri": "x", "unknown": "y"}, "test")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -280,7 +280,7 @@ func TestResolveParams(t *testing.T) {
 
 	t.Run("no params declared", func(t *testing.T) {
 		s := Set{}
-		got, err := s.ResolveParams(map[string]string{"anything": "value"})
+		got, err := s.ResolveParams(map[string]string{"anything": "value"}, "test")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -291,7 +291,7 @@ func TestResolveParams(t *testing.T) {
 
 	t.Run("explicit empty string for required param errors", func(t *testing.T) {
 		s := Set{Params: map[string]SetParam{"track": {Required: true}}}
-		_, err := s.ResolveParams(map[string]string{"track": ""})
+		_, err := s.ResolveParams(map[string]string{"track": ""}, "test")
 		if err == nil {
 			t.Fatal("expected error for empty string passed to a required param")
 		}
@@ -302,7 +302,7 @@ func TestResolveParams(t *testing.T) {
 
 	t.Run("explicit empty string for optional param is accepted", func(t *testing.T) {
 		s := Set{Params: map[string]SetParam{"device": {}}}
-		got, err := s.ResolveParams(map[string]string{"device": ""})
+		got, err := s.ResolveParams(map[string]string{"device": ""}, "test")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -313,7 +313,7 @@ func TestResolveParams(t *testing.T) {
 
 	t.Run("optional param absent resolves to empty string", func(t *testing.T) {
 		s := Set{Params: map[string]SetParam{"device": {}}}
-		got, err := s.ResolveParams(nil)
+		got, err := s.ResolveParams(nil, "test")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -325,6 +325,129 @@ func TestResolveParams(t *testing.T) {
 			t.Errorf("device: got %q, want empty string", val)
 		}
 	})
+
+	t.Run("pool ignored when arg provided", func(t *testing.T) {
+		s := Set{Params: map[string]SetParam{
+			"uri": {Pool: []string{"a", "b", "c"}},
+		}}
+		got, err := s.ResolveParams(map[string]string{"uri": "spotify:track:override"}, "test")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got["uri"] != "spotify:track:override" {
+			t.Errorf("uri: got %q, want override", got["uri"])
+		}
+	})
+
+	t.Run("empty pool falls back to default", func(t *testing.T) {
+		s := Set{Params: map[string]SetParam{
+			"uri": {Pool: []string{}, Default: "spotify:track:fallback"},
+		}}
+		got, err := s.ResolveParams(nil, "test")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got["uri"] != "spotify:track:fallback" {
+			t.Errorf("uri: got %q, want fallback default", got["uri"])
+		}
+	})
+}
+
+// ----- pool selection --------------------------------------------------------
+
+func TestResolveParams_PoolSameDayIsIdempotent(t *testing.T) {
+	oldNow := Now
+	defer func() { Now = oldNow }()
+	Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
+
+	s := Set{Params: map[string]SetParam{
+		"uri": {Pool: []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}},
+	}}
+
+	got1, err := s.ResolveParams(nil, "jareds_sleep")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got2, err := s.ResolveParams(nil, "jareds_sleep")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got1["uri"] != got2["uri"] {
+		t.Errorf("expected same-day picks to match, got %q and %q", got1["uri"], got2["uri"])
+	}
+}
+
+func TestResolveParams_PoolNeverRepeatsAdjacentDay(t *testing.T) {
+	oldNow := Now
+	defer func() { Now = oldNow }()
+
+	s := Set{Params: map[string]SetParam{
+		"uri": {Pool: []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}},
+	}}
+
+	base := time.Date(2026, 1, 1, 22, 0, 0, 0, time.UTC)
+	var prev string
+	for i := 0; i < 30; i++ {
+		day := base.AddDate(0, 0, i)
+		Now = func() time.Time { return day }
+		got, err := s.ResolveParams(nil, "jareds_sleep")
+		if err != nil {
+			t.Fatalf("day %d: unexpected error: %v", i, err)
+		}
+		if i > 0 && got["uri"] == prev {
+			t.Errorf("day %d: pick %q repeats previous day's pick", i, got["uri"])
+		}
+		prev = got["uri"]
+	}
+}
+
+func TestResolveParams_PoolSingleEntry(t *testing.T) {
+	s := Set{Params: map[string]SetParam{
+		"uri": {Pool: []string{"spotify:playlist:only"}},
+	}}
+	for i := 0; i < 5; i++ {
+		got, err := s.ResolveParams(nil, "test")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got["uri"] != "spotify:playlist:only" {
+			t.Errorf("uri: got %q, want the single pool entry", got["uri"])
+		}
+	}
+}
+
+func TestPoolIndex_Deterministic(t *testing.T) {
+	a := poolIndex("set", "param", 5)
+	b := poolIndex("set", "param", 5)
+	if a != b {
+		t.Errorf("expected identical inputs to produce identical index, got %d and %d", a, b)
+	}
+	if a < 0 || a >= 5 {
+		t.Errorf("index %d out of range [0,5)", a)
+	}
+}
+
+func TestResolveParams_PoolCyclesEvenlyOverFullPeriod(t *testing.T) {
+	oldNow := Now
+	defer func() { Now = oldNow }()
+
+	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
+	s := Set{Params: map[string]SetParam{"uri": {Pool: pool}}}
+
+	base := time.Date(2026, 3, 1, 22, 0, 0, 0, time.UTC)
+	seen := make(map[string]bool)
+	for i := 0; i < len(pool); i++ {
+		day := base.AddDate(0, 0, i)
+		Now = func() time.Time { return day }
+		got, err := s.ResolveParams(nil, "jareds_sleep")
+		if err != nil {
+			t.Fatalf("day %d: unexpected error: %v", i, err)
+		}
+		seen[got["uri"]] = true
+	}
+	if len(seen) != len(pool) {
+		t.Errorf("expected all %d pool entries to appear within one full cycle, saw %d: %v", len(pool), len(seen), seen)
+	}
 }
 
 // ----- ResolveContextURI -----------------------------------------------------
@@ -999,4 +1122,48 @@ func TestValidRepeatStates(t *testing.T) {
 	if ValidRepeatStates["loop"] {
 		t.Error("expected 'loop' to be invalid")
 	}
+}
+
+// ----- ResolveDeviceID --------------------------------------------------------
+
+func TestResolveDeviceID(t *testing.T) {
+	t.Run("literal passes through unchanged", func(t *testing.T) {
+		got, err := ResolveDeviceID("dev123", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "dev123" {
+			t.Errorf("got %q, want dev123", got)
+		}
+	})
+
+	t.Run("empty string passes through unchanged", func(t *testing.T) {
+		got, err := ResolveDeviceID("", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("placeholder resolved from map", func(t *testing.T) {
+		got, err := ResolveDeviceID("{{ device }}", map[string]string{"device": "dev456"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "dev456" {
+			t.Errorf("got %q, want dev456", got)
+		}
+	})
+
+	t.Run("missing placeholder errors", func(t *testing.T) {
+		_, err := ResolveDeviceID("{{ device }}", map[string]string{})
+		if err == nil {
+			t.Fatal("expected error for unresolved placeholder")
+		}
+		if !strings.Contains(err.Error(), "device") {
+			t.Errorf("expected 'device' in error, got: %v", err)
+		}
+	})
 }

@@ -84,10 +84,16 @@ Sets are named sequences of Spotify commands. A set can be as simple as a single
 sets:
   random_sleep:
     device_id: DEVICE_ID
+    params:
+      uri:
+        pool:
+          - spotify:playlist:PLAYLIST_ID_1
+          - spotify:playlist:PLAYLIST_ID_2
+          - spotify:playlist:PLAYLIST_ID_3
     commands:
       - action: play
         params:
-          uri: spotify:playlist:PLAYLIST_ID
+          uri: '{{ uri }}'
         timeout: 20s
         on_timeout: fail
       - action: shuffle
@@ -102,12 +108,12 @@ sets:
 
 | Field | Default | Description |
 |---|---|---|
-| `device_id` | — | Applies to every command in the set. A command can override it with its own `device_id`. Omitting at both levels targets the currently active Spotify device. |
+| `device_id` | — | Applies to every command in the set. A command can override it with its own `device_id`. Omitting at both levels targets the currently active Spotify device. Accepts a `{{ name }}` placeholder resolved against the set's own declared `params` (literal values pass through unchanged) — see "Overriding the device at runtime" below. |
 | `on_error` | `fail` | Default error policy for all commands in the set. |
 | `on_timeout` | `fail` | Default timeout policy for all commands in the set. |
 | `confirm` | `true` | Default confirmation setting for all commands in the set. Commands may override it. |
 | `timeout` | `15s` | Default timeout for all commands in the set. Commands may override it. |
-| `params` | — | Named parameters the set accepts. Each entry has `required: true/false` and an optional `default`. Callers supply values via `--<name>` flags on the CLI, or as sibling keys under `run_set` params. |
+| `params` | — | Named parameters the set accepts. Each entry has `required: true/false`, an optional `default`, or a `pool` (list of candidate values, picked automatically — see below). `pool` is mutually exclusive with `required`/`default`. Callers supply non-pool values via `--<name>` flags on the CLI, or as sibling keys under `run_set` params. |
 
 #### Commands
 
@@ -117,7 +123,7 @@ Each command in a set has:
 |---|---|---|
 | `action` | *(required)* | See actions table below |
 | `name` | — | Optional label for this command. Used in log output and `spotctl sets` listings. |
-| `device_id` | — | Spotify device ID for this command. Overrides the set-level `device_id`. Omit to target the active device. |
+| `device_id` | — | Spotify device ID for this command. Overrides the set-level `device_id`. Omit to target the active device. Also accepts a `{{ name }}` placeholder, same as the set-level field. |
 | `params` | — | Action-specific parameters (see below) |
 | `confirm` | set-level or `true` | Poll Spotify state until the action is reflected before continuing. Set to `false` to fire-and-forget. |
 | `timeout` | set-level or `15s` | Overall deadline for the command including confirmation polling |
@@ -169,6 +175,72 @@ To use a param value inside a command, use `{{ name }}` syntax:
 ```
 
 `spotctl sets` renders these as `<name>` (e.g. `uri=<uri>`), indicating the value is supplied at call time. A concrete value (e.g. `level=35`) means a literal or default is set directly in the config.
+
+##### Randomized picks with `pool`
+
+A declared param can list a `pool` of candidate values instead of a fixed `default`:
+
+```yaml
+params:
+  uri:
+    pool:
+      - spotify:playlist:AAAAAAAAAAAAAAAAAAAA
+      - spotify:playlist:BBBBBBBBBBBBBBBBBBBB
+      - spotify:playlist:CCCCCCCCCCCCCCCCCCCC
+```
+
+Each run picks one entry, resolved the same way as `default` (i.e. usable via `{{ uri }}` in commands or forwarded to a nested `run_set`). The pick is deterministic based on the current calendar date — no random seed or file state is involved, so nothing is written to `config.yaml`:
+
+- Running the set again later the same day reproduces the same pick (safe to retry).
+- The immediately preceding calendar day's pick is never repeated.
+- Over `len(pool)` consecutive days, every pool entry appears exactly once.
+
+`pool` is mutually exclusive with `default` and `required` on the same param — `spotctl` rejects config where both are set.
+
+##### Overriding the device at runtime
+
+`device_id` (on a set or a command) can reference a declared param with `{{ name }}`, exactly like `uri` or `level`. Declare the param and point `device_id` at it:
+
+```yaml
+sets:
+  jared_bedroom_play:
+    device_id: '{{ device }}'
+    params:
+      device:
+        default: 2cd72806a72944a01d1a70e77fb5de1f0b2a5ac8
+      uri:
+        required: true
+    commands:
+      - action: play
+        params:
+          uri: '{{ uri }}'
+```
+
+Since `device` is now a declared param, `--device` becomes a recognized flag automatically (the same mechanism that makes `--uri`/`--volume` work — see `spotctl run --help` above):
+
+```bash
+spotctl run jared_bedroom_play --uri spotify:playlist:abc123 --device OTHER_DEVICE_ID
+```
+
+For a `run_set` command specifically, its own (resolved) `device_id` is automatically forwarded into the target set as a `device` arg — so a wrapper set only needs to expose its own `device` param and set its `run_set` command's `device_id` to `'{{ device }}'`; it doesn't need to also list `device` under that command's `params:`:
+
+```yaml
+sets:
+  jareds_sleep:
+    params:
+      device:
+        default: 2cd72806a72944a01d1a70e77fb5de1f0b2a5ac8
+      uri:
+        pool: [...]
+    commands:
+      - action: run_set
+        device_id: '{{ device }}'
+        params:
+          set: jared_bedroom_play
+          uri: '{{ uri }}'
+```
+
+`spotctl run jareds_sleep --device X` then reaches `jared_bedroom_play` without `jared_bedroom_play` needing any changes beyond declaring its own `device` param. If the caller doesn't pass `--device` and nothing forwards one, each set's own `device_id`/default still applies — forwarding never overwrites a target set's default with an empty value.
 
 ## Commands
 

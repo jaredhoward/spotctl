@@ -2,10 +2,15 @@ package config
 
 import (
 	"fmt"
+	"hash/fnv"
 	"regexp"
 	"strings"
 	"time"
 )
+
+// Now returns the current time. It is a package-level var so tests can
+// override it to get deterministic pool picks (see pickFromPool).
+var Now = time.Now
 
 // OnFailure controls what a set does when a command times out or errors.
 type OnFailure string
@@ -42,9 +47,11 @@ type Set struct {
 }
 
 // ResolveParams validates and merges caller-supplied args with declared
-// set-level param defaults. Returns an error if a required param is absent
-// from both args and the default. Unknown keys in args are silently ignored.
-func (s *Set) ResolveParams(args map[string]string) (map[string]string, error) {
+// set-level param defaults/pools. setName scopes pool selection so different
+// sets sharing a param name (e.g. "uri") don't rotate in lockstep. Returns an
+// error if a required param is absent from args, default, and pool. Unknown
+// keys in args are silently ignored.
+func (s *Set) ResolveParams(args map[string]string, setName string) (map[string]string, error) {
 	resolved := make(map[string]string, len(s.Params))
 	for name, decl := range s.Params {
 		if val, ok := args[name]; ok {
@@ -52,6 +59,8 @@ func (s *Set) ResolveParams(args map[string]string) (map[string]string, error) {
 				return nil, fmt.Errorf("missing required arg %q", name)
 			}
 			resolved[name] = val
+		} else if len(decl.Pool) > 0 {
+			resolved[name] = pickFromPool(setName, name, decl.Pool, Now())
 		} else if decl.Default != "" {
 			resolved[name] = decl.Default
 		} else if decl.Required {
@@ -65,6 +74,40 @@ func (s *Set) ResolveParams(args map[string]string) (map[string]string, error) {
 		}
 	}
 	return resolved, nil
+}
+
+// pickFromPool deterministically picks a pool entry for the given calendar
+// day — no state is persisted anywhere. The starting position in the pool is
+// a hash of setName and paramName (so different sets/params don't all land on
+// the same entry on the same day); from there the pick advances by one pool
+// position per calendar day. This guarantees: re-running on the same day
+// reproduces the same pick, consecutive days never repeat (advancing by one
+// step in a pool of size > 1 can never return to the same index), and the
+// full pool cycles through evenly every len(pool) days.
+func pickFromPool(setName, paramName string, pool []string, now time.Time) string {
+	n := len(pool)
+	if n == 1 {
+		return pool[0]
+	}
+	offset := poolIndex(setName, paramName, n)
+	idx := (offset + dayCount(now)) % n
+	return pool[idx]
+}
+
+// poolIndex hashes (setName, paramName) into a starting index in [0, n).
+func poolIndex(setName, paramName string, n int) int {
+	h := fnv.New32a()
+	h.Write([]byte(setName + "\x00" + paramName))
+	return int(h.Sum32() % uint32(n))
+}
+
+// dayCount returns a value that increases by exactly 1 for each successive
+// calendar date of now (in now's own location), independent of time-of-day.
+// Using an absolute epoch anchor rather than a formatted date string avoids
+// string-hash timezone/format edge cases while staying trivially testable.
+func dayCount(now time.Time) int {
+	y, m, d := now.Date()
+	return int(time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Unix() / 86400)
 }
 
 // Command is a single action within a set.
@@ -89,6 +132,14 @@ func (c *Command) ResolvedDeviceID(setDeviceID string) string {
 		return c.DeviceID
 	}
 	return setDeviceID
+}
+
+// ResolveDeviceID interpolates a device_id string (from Set.DeviceID or
+// Command.DeviceID) against a set's resolved params, so device_id: '{{ name }}'
+// can reference a declared param the same way uri or volume already do. A
+// literal device_id with no {{ }} placeholder passes through unchanged.
+func ResolveDeviceID(deviceID string, resolved map[string]string) (string, error) {
+	return interpolateString(deviceID, resolved)
 }
 
 // TimeoutDuration parses Timeout and returns the duration, falling back to def.
@@ -192,10 +243,13 @@ func (v *IntOrTemplate) Resolved() (int, error) {
 }
 
 // SetParam declares a single parameter a set accepts, with an optional
-// default and a required flag.
+// default, a required flag, or a pool of candidate values to pick from
+// deterministically by date (see pickFromPool). Pool is mutually exclusive
+// with Default and Required — enforced in Config.validate.
 type SetParam struct {
-	Default  string `yaml:"default,omitempty"`
-	Required bool   `yaml:"required,omitempty"`
+	Default  string   `yaml:"default,omitempty"`
+	Required bool     `yaml:"required,omitempty"`
+	Pool     []string `yaml:"pool,omitempty"`
 }
 
 // CommandParams holds all possible parameters for any action type.
