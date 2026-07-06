@@ -16,7 +16,7 @@ func Build(name string, set config.Set, cfg *config.Config, depth int, args map[
 		return nil, &DepthExceededError{Max: MaxSetDepth}
 	}
 
-	resolved, err := set.ResolveParams(args)
+	resolved, err := set.ResolveParams(args, name)
 	if err != nil {
 		return nil, fmt.Errorf("set %q: %w", name, err)
 	}

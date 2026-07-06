@@ -84,10 +84,16 @@ Sets are named sequences of Spotify commands. A set can be as simple as a single
 sets:
   random_sleep:
     device_id: DEVICE_ID
+    params:
+      uri:
+        pool:
+          - spotify:playlist:PLAYLIST_ID_1
+          - spotify:playlist:PLAYLIST_ID_2
+          - spotify:playlist:PLAYLIST_ID_3
     commands:
       - action: play
         params:
-          uri: spotify:playlist:PLAYLIST_ID
+          uri: '{{ uri }}'
         timeout: 20s
         on_timeout: fail
       - action: shuffle
@@ -107,7 +113,7 @@ sets:
 | `on_timeout` | `fail` | Default timeout policy for all commands in the set. |
 | `confirm` | `true` | Default confirmation setting for all commands in the set. Commands may override it. |
 | `timeout` | `15s` | Default timeout for all commands in the set. Commands may override it. |
-| `params` | — | Named parameters the set accepts. Each entry has `required: true/false` and an optional `default`. Callers supply values via `--<name>` flags on the CLI, or as sibling keys under `run_set` params. |
+| `params` | — | Named parameters the set accepts. Each entry has `required: true/false`, an optional `default`, or a `pool` (list of candidate values, picked automatically — see below). `pool` is mutually exclusive with `required`/`default`. Callers supply non-pool values via `--<name>` flags on the CLI, or as sibling keys under `run_set` params. |
 
 #### Commands
 
@@ -169,6 +175,27 @@ To use a param value inside a command, use `{{ name }}` syntax:
 ```
 
 `spotctl sets` renders these as `<name>` (e.g. `uri=<uri>`), indicating the value is supplied at call time. A concrete value (e.g. `level=35`) means a literal or default is set directly in the config.
+
+##### Randomized picks with `pool`
+
+A declared param can list a `pool` of candidate values instead of a fixed `default`:
+
+```yaml
+params:
+  uri:
+    pool:
+      - spotify:playlist:AAAAAAAAAAAAAAAAAAAA
+      - spotify:playlist:BBBBBBBBBBBBBBBBBBBB
+      - spotify:playlist:CCCCCCCCCCCCCCCCCCCC
+```
+
+Each run picks one entry, resolved the same way as `default` (i.e. usable via `{{ uri }}` in commands or forwarded to a nested `run_set`). The pick is deterministic based on the current calendar date — no random seed or file state is involved, so nothing is written to `config.yaml`:
+
+- Running the set again later the same day reproduces the same pick (safe to retry).
+- The immediately preceding calendar day's pick is never repeated.
+- Over `len(pool)` consecutive days, every pool entry appears exactly once.
+
+`pool` is mutually exclusive with `default` and `required` on the same param — `spotctl` rejects config where both are set.
 
 ## Commands
 

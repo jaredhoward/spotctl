@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -146,6 +147,20 @@ func (c *Config) validate() error {
 		}
 		if err := validateOnFailure(set.OnTimeout, "sets."+name+".on_timeout"); err != nil {
 			return err
+		}
+		paramNames := make([]string, 0, len(set.Params))
+		for pname := range set.Params {
+			paramNames = append(paramNames, pname)
+		}
+		sort.Strings(paramNames)
+		for _, pname := range paramNames {
+			decl := set.Params[pname]
+			if len(decl.Pool) > 0 && decl.Default != "" {
+				return fmt.Errorf("config field sets.%s.params.%s: pool and default are mutually exclusive", name, pname)
+			}
+			if len(decl.Pool) > 0 && decl.Required {
+				return fmt.Errorf("config field sets.%s.params.%s: pool and required are mutually exclusive (pool always yields a value)", name, pname)
+			}
 		}
 		for i, cmd := range set.Commands {
 			loc := fmt.Sprintf("sets.%s.commands[%d]", name, i)
