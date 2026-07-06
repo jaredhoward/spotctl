@@ -489,3 +489,159 @@ func TestBuildAction_UnknownDirectly(t *testing.T) {
 		t.Fatalf("expected unknown action error from buildAction, got %v", err)
 	}
 }
+
+// ----- device_id templating ---------------------------------------------------
+
+func TestBuild_SetLevelDeviceIDTemplated(t *testing.T) {
+	set := config.Set{
+		DeviceID: "{{ device }}",
+		Params: map[string]config.SetParam{
+			"device": {Default: "dev-default"},
+		},
+		Commands: []config.Command{
+			{Action: "pause", Confirm: new(false)},
+		},
+	}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a, ok := rs.Steps[0].action.(*spotify.Pause)
+	if !ok {
+		t.Fatalf("expected *spotify.Pause, got %T", rs.Steps[0].action)
+	}
+	if a.DeviceID != "dev-default" {
+		t.Errorf("DeviceID: got %q, want dev-default", a.DeviceID)
+	}
+}
+
+func TestBuild_SetLevelDeviceIDTemplated_ArgOverride(t *testing.T) {
+	set := config.Set{
+		DeviceID: "{{ device }}",
+		Params: map[string]config.SetParam{
+			"device": {Default: "dev-default"},
+		},
+		Commands: []config.Command{
+			{Action: "pause", Confirm: new(false)},
+		},
+	}
+	rs, err := Build("test", set, minimalCfg(nil), 0, map[string]string{"device": "dev-override"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a := rs.Steps[0].action.(*spotify.Pause)
+	if a.DeviceID != "dev-override" {
+		t.Errorf("DeviceID: got %q, want dev-override", a.DeviceID)
+	}
+}
+
+func TestBuild_CommandLevelDeviceIDOverridesSet(t *testing.T) {
+	set := config.Set{
+		DeviceID: "set-device",
+		Params: map[string]config.SetParam{
+			"device": {Default: "cmd-device"},
+		},
+		Commands: []config.Command{
+			{Action: "pause", DeviceID: "{{ device }}", Confirm: new(false)},
+		},
+	}
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a := rs.Steps[0].action.(*spotify.Pause)
+	if a.DeviceID != "cmd-device" {
+		t.Errorf("DeviceID: got %q, want cmd-device (command override)", a.DeviceID)
+	}
+}
+
+func TestBuild_DeviceIDMissingPlaceholderErrors(t *testing.T) {
+	set := config.Set{
+		DeviceID: "{{ undeclared }}",
+		Commands: []config.Command{
+			{Action: "pause"},
+		},
+	}
+	_, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err == nil || !strings.Contains(err.Error(), "undeclared") {
+		t.Fatalf("expected undeclared placeholder error, got %v", err)
+	}
+}
+
+func TestBuild_CommandDeviceIDMissingPlaceholderErrors(t *testing.T) {
+	set := config.Set{
+		Commands: []config.Command{
+			{Action: "pause", DeviceID: "{{ undeclared }}"},
+		},
+	}
+	_, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err == nil || !strings.Contains(err.Error(), "undeclared") {
+		t.Fatalf("expected undeclared placeholder error, got %v", err)
+	}
+}
+
+func TestBuild_RunSet_ForwardsDeviceIDToNestedSet(t *testing.T) {
+	inner := config.Set{
+		Params: map[string]config.SetParam{
+			"device": {Required: true},
+		},
+		Commands: []config.Command{
+			{Action: "play", DeviceID: "{{ device }}", Confirm: new(false)},
+		},
+	}
+	outer := config.Set{
+		Params: map[string]config.SetParam{
+			"device": {Default: "forwarded-device"},
+		},
+		Commands: []config.Command{
+			{Action: "run_set", DeviceID: "{{ device }}", Params: config.CommandParams{Set: "inner"}},
+		},
+	}
+	cfg := minimalCfg(map[string]config.Set{"outer": outer, "inner": inner})
+
+	rs, err := Build("outer", outer, cfg, 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	play := extractPlay(rs)
+	if play == nil {
+		t.Fatal("no play action found in nested RunSet")
+	}
+	if play.DeviceID != "forwarded-device" {
+		t.Errorf("DeviceID: got %q, want forwarded-device", play.DeviceID)
+	}
+}
+
+func TestBuild_RunSet_NoDeviceOverridePreservesInnerDefault(t *testing.T) {
+	inner := config.Set{
+		DeviceID: "{{ device }}",
+		Params: map[string]config.SetParam{
+			"device": {Default: "inner-default-device"},
+		},
+		Commands: []config.Command{
+			{Action: "play", Confirm: new(false)},
+		},
+	}
+	outer := config.Set{
+		// No device_id at all on the outer set or its run_set command — the
+		// forwarded deviceID is empty, so the inner set's own default must
+		// survive untouched (regression guard for the empty-string-overrides
+		// default footgun in ResolveParams).
+		Commands: []config.Command{
+			{Action: "run_set", Params: config.CommandParams{Set: "inner"}},
+		},
+	}
+	cfg := minimalCfg(map[string]config.Set{"outer": outer, "inner": inner})
+
+	rs, err := Build("outer", outer, cfg, 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	play := extractPlay(rs)
+	if play == nil {
+		t.Fatal("no play action found in nested RunSet")
+	}
+	if play.DeviceID != "inner-default-device" {
+		t.Errorf("DeviceID: got %q, want inner-default-device (inner default must survive)", play.DeviceID)
+	}
+}

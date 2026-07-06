@@ -21,6 +21,11 @@ func Build(name string, set config.Set, cfg *config.Config, depth int, args map[
 		return nil, fmt.Errorf("set %q: %w", name, err)
 	}
 
+	setDeviceID, err := config.ResolveDeviceID(set.DeviceID, resolved)
+	if err != nil {
+		return nil, fmt.Errorf("set %q device_id: %w", name, err)
+	}
+
 	steps := make([]step, 0, len(set.Commands))
 	for i, cmd := range set.Commands {
 		interpolated, err := cmd.Params.InterpolateParams(resolved)
@@ -33,7 +38,12 @@ func Build(name string, set config.Set, cfg *config.Config, depth int, args map[
 			return nil, fmt.Errorf("set %q command %d (%s): %w", name, i+1, cmd.Action, err)
 		}
 
-		deviceID := cmd.ResolvedDeviceID(set.DeviceID)
+		cmd.DeviceID, err = config.ResolveDeviceID(cmd.DeviceID, resolved)
+		if err != nil {
+			return nil, fmt.Errorf("set %q command %d (%s): device_id: %w", name, i+1, cmd.Action, err)
+		}
+
+		deviceID := cmd.ResolvedDeviceID(setDeviceID)
 
 		a, err := buildAction(cmd, deviceID, cfg, depth)
 		if err != nil {
@@ -108,7 +118,14 @@ func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth 
 		if !ok {
 			return nil, fmt.Errorf("set %q not found", cmd.Params.Set)
 		}
-		return Build(cmd.Params.Set, sub, cfg, depth+1, cmd.Params.ForwardedArgs())
+		forwarded := cmd.Params.ForwardedArgs()
+		if deviceID != "" {
+			if forwarded == nil {
+				forwarded = make(map[string]string)
+			}
+			forwarded["device"] = deviceID
+		}
+		return Build(cmd.Params.Set, sub, cfg, depth+1, forwarded)
 
 	default:
 		return nil, fmt.Errorf("unknown action %q", cmd.Action)

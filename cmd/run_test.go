@@ -168,3 +168,46 @@ func TestRunCmd_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestRunCmd_DeviceFlagOverridesTemplatedDeviceID(t *testing.T) {
+	var gotDeviceID string
+	srv := mockSpotifyServer(t, map[string]http.HandlerFunc{
+		"PUT /pause": func(w http.ResponseWriter, r *http.Request) {
+			gotDeviceID = r.URL.Query().Get("device_id")
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"is_playing":false}`))
+		},
+	})
+	defer srv.Close()
+
+	oldConfigPath := configPath
+	defer func() { configPath = oldConfigPath }()
+	cleanup := wireClient(t, srv)
+	defer cleanup()
+
+	cfg := &config.Config{
+		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
+		Sets: map[string]config.Set{
+			"mySet": {
+				DeviceID: "{{ device }}",
+				Params: map[string]config.SetParam{
+					"device": {Default: "default-device"},
+				},
+				Commands: []config.Command{
+					{Action: "pause"},
+				},
+			},
+		},
+	}
+	configPath = writeTempConfig(t, cfg)
+
+	if err := runCmd.RunE(runCmd, []string{"mySet", "--device", "override-device"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotDeviceID != "override-device" {
+		t.Errorf("device_id sent to Spotify: got %q, want override-device", gotDeviceID)
+	}
+}

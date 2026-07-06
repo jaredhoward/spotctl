@@ -1123,3 +1123,47 @@ func TestValidRepeatStates(t *testing.T) {
 		t.Error("expected 'loop' to be invalid")
 	}
 }
+
+// ----- ResolveDeviceID --------------------------------------------------------
+
+func TestResolveDeviceID(t *testing.T) {
+	t.Run("literal passes through unchanged", func(t *testing.T) {
+		got, err := ResolveDeviceID("dev123", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "dev123" {
+			t.Errorf("got %q, want dev123", got)
+		}
+	})
+
+	t.Run("empty string passes through unchanged", func(t *testing.T) {
+		got, err := ResolveDeviceID("", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("placeholder resolved from map", func(t *testing.T) {
+		got, err := ResolveDeviceID("{{ device }}", map[string]string{"device": "dev456"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "dev456" {
+			t.Errorf("got %q, want dev456", got)
+		}
+	})
+
+	t.Run("missing placeholder errors", func(t *testing.T) {
+		_, err := ResolveDeviceID("{{ device }}", map[string]string{})
+		if err == nil {
+			t.Fatal("expected error for unresolved placeholder")
+		}
+		if !strings.Contains(err.Error(), "device") {
+			t.Errorf("expected 'device' in error, got: %v", err)
+		}
+	})
+}

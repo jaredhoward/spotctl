@@ -134,6 +134,14 @@ func (c *Command) ResolvedDeviceID(setDeviceID string) string {
 	return setDeviceID
 }
 
+// ResolveDeviceID interpolates a device_id string (from Set.DeviceID or
+// Command.DeviceID) against a set's resolved params, so device_id: '{{ name }}'
+// can reference a declared param the same way uri or volume already do. A
+// literal device_id with no {{ }} placeholder passes through unchanged.
+func ResolveDeviceID(deviceID string, resolved map[string]string) (string, error) {
+	return interpolateString(deviceID, resolved)
+}
+
 // TimeoutDuration parses Timeout and returns the duration, falling back to def.
 func (c *Command) TimeoutDuration(def time.Duration) time.Duration {
 	if c.Timeout == "" {

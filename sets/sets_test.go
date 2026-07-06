@@ -721,6 +721,11 @@ func TestCommandLabel(t *testing.T) {
 			cmd:  config.Command{Action: "volume", Params: config.CommandParams{Level: &config.IntOrTemplate{Expr: "{{ vol }}"}}},
 			want: []string{"volume", "level=<vol>"},
 		},
+		{
+			name: "templated device_id renders as placeholder",
+			cmd:  config.Command{Action: "pause", DeviceID: "{{ device }}"},
+			want: []string{"pause", "device=<device>"},
+		},
 	}
 
 	for _, tt := range cases {
