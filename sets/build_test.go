@@ -299,7 +299,7 @@ func TestBuild_StepLabelWithPoolShowsActualPick(t *testing.T) {
 
 	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
 	set := config.Set{
-		Params: map[string]config.SetParam{"uri": {Pool: pool}},
+		Params: map[string]config.SetParam{"uri": {Pool: pool, Method: config.PoolMethodDate}},
 		Commands: []config.Command{
 			{Action: "play", Params: config.CommandParams{URI: "{{ uri }}"}, Confirm: new(false)},
 		},
@@ -329,7 +329,7 @@ func TestBuildParams_PoolResolvesToPoolMember(t *testing.T) {
 	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
 	set := config.Set{
 		Params: map[string]config.SetParam{
-			"uri": {Pool: pool},
+			"uri": {Pool: pool, Method: config.PoolMethodDate},
 		},
 		Commands: []config.Command{
 			{Action: "play", Params: config.CommandParams{URI: `{{ uri }}`}, Confirm: new(false)},
@@ -364,7 +364,7 @@ func TestBuildParams_PoolViaNestedRunSetIsScopedToInnerSetName(t *testing.T) {
 	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
 	inner := config.Set{
 		Params: map[string]config.SetParam{
-			"uri": {Pool: pool},
+			"uri": {Pool: pool, Method: config.PoolMethodDate},
 		},
 		Commands: []config.Command{
 			{Action: "play", Params: config.CommandParams{URI: `{{ uri }}`}, Confirm: new(false)},

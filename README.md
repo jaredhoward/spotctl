@@ -225,9 +225,37 @@ To use a param value inside a command, use `{{ name }}` syntax:
 
 `spotctl sets` renders these as `<name>` (e.g. `uri=<uri>`), indicating the value is supplied at call time. A concrete value (e.g. `level=35`) means a literal or default is set directly in the config.
 
-#### Randomized picks with `pool`
+#### Picking from a pool of values with `pool`
 
-A declared param can list a `pool` of candidate values instead of a fixed `default`. For example, a `random_sleep` set that rotates through several playlists instead of always playing the same one:
+A declared param can list a `pool` of candidate values instead of a fixed `default`. Each run resolves the param to one pool entry, the same way as `default` (i.e. usable via `{{ uri }}` in commands or forwarded to a nested `run_set`). An optional `method` controls how the entry is picked; if omitted, it defaults to `random`.
+
+##### `method: random` (default)
+
+Picks uniformly at random on every run — no determinism, no file state written to `config.yaml`. Good for a pool you just want variety from, with no memory of past picks:
+
+```yaml
+sets:
+  jareds_daily_mix:
+    device_id: DEVICE_ID
+    params:
+      uri:
+        pool:
+          - spotify:playlist:AAAAAAAAAAAAAAAAAAAA
+          - spotify:playlist:BBBBBBBBBBBBBBBBBBBB
+          - spotify:playlist:CCCCCCCCCCCCCCCCCCCC
+    commands:
+      - action: play
+        params:
+          uri: '{{ uri }}'
+        timeout: 20s
+        on_timeout: fail
+```
+
+Omitting `method` entirely is equivalent to `method: random`.
+
+##### `method: date`
+
+Deterministically picks based on the current calendar date — no random seed or file state is involved. Good for a nightly set where you want variety without ever repeating last night's pick:
 
 ```yaml
 sets:
@@ -239,6 +267,7 @@ sets:
           - spotify:playlist:AAAAAAAAAAAAAAAAAAAA
           - spotify:playlist:BBBBBBBBBBBBBBBBBBBB
           - spotify:playlist:CCCCCCCCCCCCCCCCCCCC
+        method: date
     commands:
       - action: play
         params:
@@ -253,13 +282,11 @@ sets:
           state: context
 ```
 
-Each run picks one entry, resolved the same way as `default` (i.e. usable via `{{ uri }}` in commands or forwarded to a nested `run_set`). The pick is deterministic based on the current calendar date — no random seed or file state is involved, so nothing is written to `config.yaml`:
-
 - Running the set again later the same day reproduces the same pick (safe to retry).
 - The immediately preceding calendar day's pick is never repeated.
 - Over `len(pool)` consecutive days, every pool entry appears exactly once.
 
-`pool` is mutually exclusive with `default` and `required` on the same param — `spotctl` rejects config where both are set.
+`pool` is mutually exclusive with `default` and `required` on the same param — `spotctl` rejects config where both are set. `method`, if set, requires `pool` to also be set, and must be `random` or `date`.
 
 #### Overriding the device at runtime
 
