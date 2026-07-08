@@ -72,7 +72,7 @@ func TestBuild_Play_Playlist(t *testing.T) {
 	defer srv.Close()
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{PlaylistID: "pl123"}, Confirm: new(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestBuild_Play_Track(t *testing.T) {
 	defer srv.Close()
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{TrackID: "tr456"}, Confirm: new(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestBuild_Play_Album(t *testing.T) {
 	defer srv.Close()
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{AlbumID: "al789"}, Confirm: new(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestBuild_Play_Artist(t *testing.T) {
 	defer srv.Close()
 
 	set := config.Set{Commands: []config.Command{{Action: "play", Params: config.CommandParams{ArtistID: "ar999"}, Confirm: new(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestBuild_Play_MultipleURIError(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "play", Params: config.CommandParams{PlaylistID: "pl1", TrackID: "tr1"}},
 	}}
-	_, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	_, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err == nil || !strings.Contains(err.Error(), "only one of") {
 		t.Fatalf("expected multiple-URI error, got %v", err)
 	}
@@ -176,7 +176,7 @@ func TestBuild_SetLevelDeviceApplied(t *testing.T) {
 	defer srv.Close()
 
 	set := config.Set{DeviceID: "set-device", Commands: []config.Command{{Action: "pause", Confirm: new(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestBuild_CommandDeviceOverridesSet(t *testing.T) {
 		DeviceID: "set-device",
 		Commands: []config.Command{{Action: "pause", DeviceID: "cmd-device", Confirm: new(false)}},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestRunSet_PlayNoConfirm(t *testing.T) {
 	defer srv.Close()
 
 	set := config.Set{Commands: []config.Command{{Action: "play", DeviceID: "d1", Confirm: new(false)}}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestRunSet_PlayAndConfirm(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "play", DeviceID: "d1", Confirm: new(true), Timeout: "5s"},
 	}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestRunSet_ConfirmTimeout_Continue(t *testing.T) {
 			{Action: "pause", DeviceID: "d1"},
 		},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestRunSet_ConfirmTimeout_Fail(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "play", DeviceID: "d1", Confirm: new(true), Timeout: "50ms", OnTimeout: config.OnFailureFail},
 	}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestRunSet_ConfirmTimeout_SkipRemaining(t *testing.T) {
 		{Action: "play", DeviceID: "d1", Confirm: new(true), Timeout: "50ms", OnTimeout: config.OnFailureSkipRemaining},
 		{Action: "pause", DeviceID: "d1"},
 	}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,7 @@ func TestRunSet_CommandError_Continue(t *testing.T) {
 			{Action: "pause", DeviceID: "d1", Confirm: new(false)},
 		},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestRunSet_CommandError_Fail(t *testing.T) {
 		OnError:  config.OnFailureFail,
 		Commands: []config.Command{{Action: "next", DeviceID: "d1"}},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,7 +410,7 @@ func TestRunSet_CommandError_SkipRemaining(t *testing.T) {
 			{Action: "pause", DeviceID: "d1"},
 		},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,7 +433,7 @@ func TestRunSet_CommandOverridesSetDefault(t *testing.T) {
 		OnError:  config.OnFailureContinue,
 		Commands: []config.Command{{Action: "next", DeviceID: "d1", OnError: config.OnFailureFail}},
 	}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +458,7 @@ func TestRunSet_Sleep(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "sleep", Params: config.CommandParams{Duration: "20ms"}},
 	}}
-	rs, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	rs, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +489,7 @@ func TestRunSet_Composable(t *testing.T) {
 		{Action: "run_set", Params: config.CommandParams{Set: "inner"}},
 		{Action: "run_set", Params: config.CommandParams{Set: "inner"}},
 	}}
-	rs, err := sets.Build("outer", outer, newCfg(map[string]config.Set{"inner": inner}), 0, nil)
+	rs, err := sets.Build("outer", outer, newCfg(map[string]config.Set{"inner": inner}), 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -508,7 +508,7 @@ func TestBuild_MaxDepth(t *testing.T) {
 		}},
 	}
 	cfg := newCfg(s)
-	_, err := sets.Build("self", cfg.Sets["self"], cfg, sets.MaxSetDepth, nil)
+	_, err := sets.Build("self", cfg.Sets["self"], cfg, sets.MaxSetDepth, nil, "")
 	var depthErr *sets.DepthExceededError
 	if !errors.As(err, &depthErr) {
 		t.Fatalf("expected DepthExceededError, got %v", err)
@@ -519,7 +519,7 @@ func TestBuild_UnknownNestedSet(t *testing.T) {
 	set := config.Set{Commands: []config.Command{
 		{Action: "run_set", Params: config.CommandParams{Set: "does-not-exist"}},
 	}}
-	_, err := sets.Build("outer", set, newCfg(nil), 0, nil)
+	_, err := sets.Build("outer", set, newCfg(nil), 0, nil, "")
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("expected not-found error, got %v", err)
 	}
@@ -527,7 +527,7 @@ func TestBuild_UnknownNestedSet(t *testing.T) {
 
 func TestBuild_UnknownAction(t *testing.T) {
 	set := config.Set{Commands: []config.Command{{Action: "bogus"}}}
-	_, err := sets.Build("test", set, newCfg(nil), 0, nil)
+	_, err := sets.Build("test", set, newCfg(nil), 0, nil, "")
 	if err == nil || !strings.Contains(err.Error(), "unknown action") {
 		t.Fatalf("expected unknown action error, got %v", err)
 	}
