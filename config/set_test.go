@@ -361,7 +361,7 @@ func TestResolveParams_PoolSameDayIsIdempotent(t *testing.T) {
 	Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
 
 	s := Set{Params: map[string]SetParam{
-		"uri": {Pool: []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}},
+		"uri": {Pool: []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}, Method: PoolMethodDate},
 	}}
 
 	got1, err := s.ResolveParams(nil, "jareds_sleep")
@@ -382,7 +382,7 @@ func TestResolveParams_PoolNeverRepeatsAdjacentDay(t *testing.T) {
 	defer func() { Now = oldNow }()
 
 	s := Set{Params: map[string]SetParam{
-		"uri": {Pool: []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}},
+		"uri": {Pool: []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}, Method: PoolMethodDate},
 	}}
 
 	base := time.Date(2026, 1, 1, 22, 0, 0, 0, time.UTC)
@@ -432,7 +432,7 @@ func TestResolveParams_PoolCyclesEvenlyOverFullPeriod(t *testing.T) {
 	defer func() { Now = oldNow }()
 
 	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
-	s := Set{Params: map[string]SetParam{"uri": {Pool: pool}}}
+	s := Set{Params: map[string]SetParam{"uri": {Pool: pool, Method: PoolMethodDate}}}
 
 	base := time.Date(2026, 3, 1, 22, 0, 0, 0, time.UTC)
 	seen := make(map[string]bool)
@@ -447,6 +447,47 @@ func TestResolveParams_PoolCyclesEvenlyOverFullPeriod(t *testing.T) {
 	}
 	if len(seen) != len(pool) {
 		t.Errorf("expected all %d pool entries to appear within one full cycle, saw %d: %v", len(pool), len(seen), seen)
+	}
+}
+
+func TestResolveParams_PoolDefaultMethodIsRandom(t *testing.T) {
+	oldRandIntn := RandIntn
+	defer func() { RandIntn = oldRandIntn }()
+	RandIntn = func(n int) int { return 1 }
+
+	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
+	s := Set{Params: map[string]SetParam{"uri": {Pool: pool}}}
+
+	got, err := s.ResolveParams(nil, "jareds_daily_mix")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["uri"] != pool[1] {
+		t.Errorf("expected default method to be random and pick pool[1], got %q", got["uri"])
+	}
+}
+
+func TestResolveParams_PoolMethodRandomIgnoresNow(t *testing.T) {
+	oldNow := Now
+	oldRandIntn := RandIntn
+	defer func() { Now = oldNow; RandIntn = oldRandIntn }()
+	Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
+
+	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
+	s := Set{Params: map[string]SetParam{"uri": {Pool: pool, Method: PoolMethodRandom}}}
+
+	RandIntn = func(n int) int { return 0 }
+	got1, err := s.ResolveParams(nil, "jareds_daily_mix")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	RandIntn = func(n int) int { return 2 }
+	got2, err := s.ResolveParams(nil, "jareds_daily_mix")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got1["uri"] == got2["uri"] {
+		t.Errorf("expected random method to ignore Now and follow RandIntn, got same pick %q both times", got1["uri"])
 	}
 }
 

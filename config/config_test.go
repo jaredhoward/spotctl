@@ -334,3 +334,42 @@ func TestValidate_PoolAloneIsValid(t *testing.T) {
 		t.Fatalf("expected pool alone to be valid, got: %v", err)
 	}
 }
+
+func TestValidate_PoolMethodRandomIsValid(t *testing.T) {
+	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}, Method: PoolMethodRandom})
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("expected pool with method random to be valid, got: %v", err)
+	}
+}
+
+func TestValidate_PoolMethodDateIsValid(t *testing.T) {
+	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}, Method: PoolMethodDate})
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("expected pool with method date to be valid, got: %v", err)
+	}
+}
+
+func TestValidate_PoolMethodInvalidValueRejected(t *testing.T) {
+	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}, Method: "bogus"})
+	err := cfg.validate()
+	if err == nil {
+		t.Fatal("expected validation error for invalid method value")
+	}
+	msg := err.Error()
+	for _, want := range []string{"jareds_sleep", "uri", "method", "random", "date"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("expected %q in error, got: %v", want, msg)
+		}
+	}
+}
+
+func TestValidate_MethodWithoutPoolRejected(t *testing.T) {
+	cfg := validConfigWithParam(SetParam{Default: "a", Method: PoolMethodRandom})
+	err := cfg.validate()
+	if err == nil {
+		t.Fatal("expected validation error for method without pool")
+	}
+	if !strings.Contains(err.Error(), "method requires pool") {
+		t.Errorf("expected \"method requires pool\" in error, got: %v", err)
+	}
+}

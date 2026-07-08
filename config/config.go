@@ -161,6 +161,12 @@ func (c *Config) validate() error {
 			if len(decl.Pool) > 0 && decl.Required {
 				return fmt.Errorf("config field sets.%s.params.%s: pool and required are mutually exclusive (pool always yields a value)", name, pname)
 			}
+			if len(decl.Pool) == 0 && decl.Method != "" {
+				return fmt.Errorf("config field sets.%s.params.%s: method requires pool to be set", name, pname)
+			}
+			if err := validatePoolMethod(decl.Method, fmt.Sprintf("sets.%s.params.%s.method", name, pname)); err != nil {
+				return err
+			}
 		}
 		for i, cmd := range set.Commands {
 			loc := fmt.Sprintf("sets.%s.commands[%d]", name, i)
@@ -181,5 +187,14 @@ func validateOnFailure(v OnFailure, field string) error {
 		return nil
 	default:
 		return fmt.Errorf("config field %s has invalid value %q (must be fail, continue, or skip_remaining)", field, v)
+	}
+}
+
+func validatePoolMethod(v PoolMethod, field string) error {
+	switch v {
+	case "", PoolMethodRandom, PoolMethodDate:
+		return nil
+	default:
+		return fmt.Errorf("config field %s has invalid value %q (must be random or date)", field, v)
 	}
 }

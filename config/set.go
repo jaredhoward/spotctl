@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"hash/fnv"
+	"math/rand/v2"
 	"regexp"
 	"strings"
 	"time"
@@ -12,6 +13,13 @@ import (
 // override it to get deterministic pool picks (see pickFromPool).
 var Now = time.Now
 
+// RandIntn returns a pseudo-random int in [0, n). It is a package-level var
+// so tests can override it to get deterministic pool picks for
+// PoolMethodRandom (see pickFromPool). n is always > 0 when called.
+var RandIntn = func(n int) int {
+	return rand.IntN(n)
+}
+
 // OnFailure controls what a set does when a command times out or errors.
 type OnFailure string
 
@@ -19,6 +27,17 @@ const (
 	OnFailureFail          OnFailure = "fail"
 	OnFailureContinue      OnFailure = "continue"
 	OnFailureSkipRemaining OnFailure = "skip_remaining"
+)
+
+// PoolMethod selects how a pool param's value is picked on each resolution.
+type PoolMethod string
+
+const (
+	// PoolMethodRandom picks uniformly at random on every resolution. This is
+	// the default when Method is unset.
+	PoolMethodRandom PoolMethod = "random"
+	// PoolMethodDate deterministically picks by calendar date (see pickFromPool).
+	PoolMethodDate PoolMethod = "date"
 )
 
 // DefaultConfirmTimeout is used when a command has confirm:true but no explicit timeout.
@@ -60,7 +79,7 @@ func (s *Set) ResolveParams(args map[string]string, setName string) (map[string]
 			}
 			resolved[name] = val
 		} else if len(decl.Pool) > 0 {
-			resolved[name] = pickFromPool(setName, name, decl.Pool, Now())
+			resolved[name] = pickFromPool(setName, name, decl.Pool, decl.Method, Now())
 		} else if decl.Default != "" {
 			resolved[name] = decl.Default
 		} else if decl.Required {
@@ -76,22 +95,30 @@ func (s *Set) ResolveParams(args map[string]string, setName string) (map[string]
 	return resolved, nil
 }
 
-// pickFromPool deterministically picks a pool entry for the given calendar
-// day — no state is persisted anywhere. The starting position in the pool is
-// a hash of setName and paramName (so different sets/params don't all land on
-// the same entry on the same day); from there the pick advances by one pool
+// pickFromPool picks a pool entry using the param's configured method. An
+// empty method is treated as PoolMethodRandom (the default).
+//
+// PoolMethodRandom picks uniformly at random via RandIntn on every call.
+//
+// PoolMethodDate deterministically picks for the given calendar day — no
+// state is persisted anywhere. The starting position in the pool is a hash
+// of setName and paramName (so different sets/params don't all land on the
+// same entry on the same day); from there the pick advances by one pool
 // position per calendar day. This guarantees: re-running on the same day
 // reproduces the same pick, consecutive days never repeat (advancing by one
 // step in a pool of size > 1 can never return to the same index), and the
 // full pool cycles through evenly every len(pool) days.
-func pickFromPool(setName, paramName string, pool []string, now time.Time) string {
+func pickFromPool(setName, paramName string, pool []string, method PoolMethod, now time.Time) string {
 	n := len(pool)
 	if n == 1 {
 		return pool[0]
 	}
-	offset := poolIndex(setName, paramName, n)
-	idx := (offset + dayCount(now)) % n
-	return pool[idx]
+	if method == PoolMethodDate {
+		offset := poolIndex(setName, paramName, n)
+		idx := (offset + dayCount(now)) % n
+		return pool[idx]
+	}
+	return pool[RandIntn(n)]
 }
 
 // poolIndex hashes (setName, paramName) into a starting index in [0, n).
@@ -243,13 +270,14 @@ func (v *IntOrTemplate) Resolved() (int, error) {
 }
 
 // SetParam declares a single parameter a set accepts, with an optional
-// default, a required flag, or a pool of candidate values to pick from
-// deterministically by date (see pickFromPool). Pool is mutually exclusive
-// with Default and Required — enforced in Config.validate.
+// default, a required flag, or a pool of candidate values to pick from (see
+// PoolMethod). Pool is mutually exclusive with Default and Required, and
+// Method is only meaningful alongside Pool — enforced in Config.validate.
 type SetParam struct {
-	Default  string   `yaml:"default,omitempty"`
-	Required bool     `yaml:"required,omitempty"`
-	Pool     []string `yaml:"pool,omitempty"`
+	Default  string     `yaml:"default,omitempty"`
+	Required bool       `yaml:"required,omitempty"`
+	Pool     []string   `yaml:"pool,omitempty"`
+	Method   PoolMethod `yaml:"method,omitempty"`
 }
 
 // CommandParams holds all possible parameters for any action type.
