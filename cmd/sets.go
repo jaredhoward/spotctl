@@ -122,15 +122,6 @@ Run 'spotctl sets' to see declared params for each set.`,
 			fs.StringVar(v, paramName, "", fmt.Sprintf("value for set param %q", paramName))
 		}
 
-		// Sets that don't declare their own "device" param get a built-in
-		// --device override instead: it bypasses config-level device_id
-		// resolution entirely (no need to template device_id: '{{ device }}').
-		// Sets that do declare "device" keep using that existing mechanism.
-		var deviceOverrideFlag *string
-		if _, declaresDevice := set.Params["device"]; !declaresDevice {
-			deviceOverrideFlag = fs.String("device", "", "override the device used for every command in this run")
-		}
-
 		if err := fs.Parse(flagTokens); err != nil {
 			return err
 		}
@@ -145,12 +136,7 @@ Run 'spotctl sets' to see declared params for each set.`,
 			}
 		}
 
-		var deviceOverride string
-		if deviceOverrideFlag != nil {
-			deviceOverride = *deviceOverrideFlag
-		}
-
-		rs, err := sets.Build(name, set, cfg, 0, resolvedArgs, deviceOverride)
+		rs, err := sets.Build(name, set, cfg, 0, resolvedArgs)
 		if err != nil {
 			return err
 		}
