@@ -373,3 +373,4 @@ func TestValidate_MethodWithoutPoolRejected(t *testing.T) {
 		t.Errorf("expected \"method requires pool\" in error, got: %v", err)
 	}
 }
+

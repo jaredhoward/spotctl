@@ -11,10 +11,7 @@ import (
 // Build translates a config.Set into a *RunSet ready to Dispatch. depth is
 // the current nesting level used to enforce MaxSetDepth. args supplies
 // caller-provided parameter values which are merged with set-level defaults.
-// deviceOverride, when non-empty, bypasses config-level device_id resolution
-// (literal or templated) entirely and forces every command in the set —
-// including nested run_set targets — to use it.
-func Build(name string, set config.Set, cfg *config.Config, depth int, args map[string]string, deviceOverride string) (*RunSet, error) {
+func Build(name string, set config.Set, cfg *config.Config, depth int, args map[string]string) (*RunSet, error) {
 	if depth > MaxSetDepth {
 		return nil, &DepthExceededError{Max: MaxSetDepth}
 	}
@@ -24,12 +21,9 @@ func Build(name string, set config.Set, cfg *config.Config, depth int, args map[
 		return nil, fmt.Errorf("set %q: %w", name, err)
 	}
 
-	var setDeviceID string
-	if deviceOverride == "" {
-		setDeviceID, err = config.ResolveDeviceID(set.DeviceID, resolved)
-		if err != nil {
-			return nil, fmt.Errorf("set %q device_id: %w", name, err)
-		}
+	setDeviceID, err := config.ResolveDeviceID(set.DeviceID, resolved)
+	if err != nil {
+		return nil, fmt.Errorf("set %q device_id: %w", name, err)
 	}
 
 	steps := make([]step, 0, len(set.Commands))
@@ -44,18 +38,14 @@ func Build(name string, set config.Set, cfg *config.Config, depth int, args map[
 			return nil, fmt.Errorf("set %q command %d (%s): %w", name, i+1, cmd.Action, err)
 		}
 
-		var deviceID string
-		if deviceOverride != "" {
-			deviceID = deviceOverride
-		} else {
-			cmd.DeviceID, err = config.ResolveDeviceID(cmd.DeviceID, resolved)
-			if err != nil {
-				return nil, fmt.Errorf("set %q command %d (%s): device_id: %w", name, i+1, cmd.Action, err)
-			}
-			deviceID = cmd.ResolvedDeviceID(setDeviceID)
+		cmd.DeviceID, err = config.ResolveDeviceID(cmd.DeviceID, resolved)
+		if err != nil {
+			return nil, fmt.Errorf("set %q command %d (%s): device_id: %w", name, i+1, cmd.Action, err)
 		}
 
-		a, err := buildAction(cmd, deviceID, cfg, depth, deviceOverride)
+		deviceID := cmd.ResolvedDeviceID(setDeviceID)
+
+		a, err := buildAction(cmd, deviceID, cfg, depth)
 		if err != nil {
 			return nil, fmt.Errorf("set %q command %d (%s): %w", name, i+1, cmd.Action, err)
 		}
@@ -88,7 +78,7 @@ func Build(name string, set config.Set, cfg *config.Config, depth int, args map[
 }
 
 // buildAction constructs the concrete spotify.Action for a single config.Command.
-func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth int, deviceOverride string) (spotify.Action, error) {
+func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth int) (spotify.Action, error) {
 	switch cmd.Action {
 	case "play":
 		uri, err := cmd.Params.ResolveContextURI()
@@ -138,7 +128,7 @@ func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth 
 			}
 			forwarded["device"] = deviceID
 		}
-		return Build(cmd.Params.Set, sub, cfg, depth+1, forwarded, deviceOverride)
+		return Build(cmd.Params.Set, sub, cfg, depth+1, forwarded)
 
 	default:
 		return nil, fmt.Errorf("unknown action %q", cmd.Action)

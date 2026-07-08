@@ -290,15 +290,7 @@ sets:
 
 #### Overriding the device at runtime
 
-Every set accepts a built-in `--device` flag with no config changes needed:
-
-```bash
-spotctl run jareds_daily_mix --device OTHER_DEVICE_ID
-```
-
-When passed, it forces every command in the run — including any nested `run_set` targets — onto that device, regardless of what `device_id` (if anything) the set or command configures. Omit it and behavior is unchanged (active device, or whatever `device_id` is configured).
-
-If a set wants a *configured default device* that isn't the active device, declare a `device` param and point `device_id` at it with `{{ name }}`, exactly like `uri` or `level`:
+`device_id` (on a set or a command) can reference a declared param with `{{ name }}`, exactly like `uri` or `level`. Declare the param and point `device_id` at it:
 
 ```yaml
 sets:
@@ -315,11 +307,30 @@ sets:
           uri: '{{ uri }}'
 ```
 
-Once a set declares its own `device` param this way, that mechanism takes over instead of the built-in flag — `--device` still works, but goes through `{{ device }}` templating (the same mechanism that makes `--uri`/`--volume` work — see `spotctl run --help` above), and omitting `--device` falls back to the configured `default`:
+Since `device` is now a declared param, `--device` becomes a recognized flag automatically (the same mechanism that makes `--uri`/`--volume` work — see `spotctl run --help` above):
 
 ```bash
 spotctl run jared_bedroom_play --uri spotify:playlist:abc123 --device OTHER_DEVICE_ID
 ```
+
+For a `run_set` command specifically, its own (resolved) `device_id` is automatically forwarded into the target set as a `device` arg — so a wrapper set only needs to expose its own `device` param and set its `run_set` command's `device_id` to `'{{ device }}'`; it doesn't need to also list `device` under that command's `params:`:
+
+```yaml
+sets:
+  jareds_sleep:
+    params:
+      device: {}
+      uri:
+        pool: [...]
+    commands:
+      - action: run_set
+        device_id: '{{ device }}'
+        params:
+          set: jared_bedroom_play
+          uri: '{{ uri }}'
+```
+
+`spotctl run jareds_sleep --device X` then reaches `jared_bedroom_play` without `jared_bedroom_play` needing any changes beyond declaring its own `device` param. If the caller doesn't pass `--device` and nothing forwards one, each set's own `device_id`/default still applies — forwarding never overwrites a target set's default with an empty value. A set that never needs `--device` simply doesn't declare a `device` param at all.
 
 ## Flags
 
