@@ -364,11 +364,11 @@ func TestResolveParams_PoolSameDayIsIdempotent(t *testing.T) {
 		"uri": {Pool: []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}, Method: PoolMethodDate},
 	}}
 
-	got1, err := s.ResolveParams(nil, "jareds_sleep")
+	got1, err := s.ResolveParams(nil, "speaker_sleep")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got2, err := s.ResolveParams(nil, "jareds_sleep")
+	got2, err := s.ResolveParams(nil, "speaker_sleep")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestResolveParams_PoolNeverRepeatsAdjacentDay(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		day := base.AddDate(0, 0, i)
 		Now = func() time.Time { return day }
-		got, err := s.ResolveParams(nil, "jareds_sleep")
+		got, err := s.ResolveParams(nil, "speaker_sleep")
 		if err != nil {
 			t.Fatalf("day %d: unexpected error: %v", i, err)
 		}
@@ -439,7 +439,7 @@ func TestResolveParams_PoolCyclesEvenlyOverFullPeriod(t *testing.T) {
 	for i := 0; i < len(pool); i++ {
 		day := base.AddDate(0, 0, i)
 		Now = func() time.Time { return day }
-		got, err := s.ResolveParams(nil, "jareds_sleep")
+		got, err := s.ResolveParams(nil, "speaker_sleep")
 		if err != nil {
 			t.Fatalf("day %d: unexpected error: %v", i, err)
 		}
@@ -458,7 +458,7 @@ func TestResolveParams_PoolDefaultMethodIsRandom(t *testing.T) {
 	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
 	s := Set{Params: map[string]SetParam{"uri": {Pool: pool}}}
 
-	got, err := s.ResolveParams(nil, "jareds_daily_mix")
+	got, err := s.ResolveParams(nil, "speaker_daily_mix")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -477,12 +477,12 @@ func TestResolveParams_PoolMethodRandomIgnoresNow(t *testing.T) {
 	s := Set{Params: map[string]SetParam{"uri": {Pool: pool, Method: PoolMethodRandom}}}
 
 	RandIntn = func(n int) int { return 0 }
-	got1, err := s.ResolveParams(nil, "jareds_daily_mix")
+	got1, err := s.ResolveParams(nil, "speaker_daily_mix")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	RandIntn = func(n int) int { return 2 }
-	got2, err := s.ResolveParams(nil, "jareds_daily_mix")
+	got2, err := s.ResolveParams(nil, "speaker_daily_mix")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

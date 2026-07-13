@@ -304,7 +304,7 @@ func TestBuild_StepLabelWithPoolShowsActualPick(t *testing.T) {
 			{Action: "play", Params: config.CommandParams{URI: "{{ uri }}"}, Confirm: new(false)},
 		},
 	}
-	rs, err := Build("jareds_sleep", set, minimalCfg(nil), 0, nil)
+	rs, err := Build("speaker_sleep", set, minimalCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestBuildParams_PoolResolvesToPoolMember(t *testing.T) {
 		},
 	}
 
-	rs, err := Build("jareds_sleep", set, minimalCfg(nil), 0, nil)
+	rs, err := Build("speaker_sleep", set, minimalCfg(nil), 0, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
