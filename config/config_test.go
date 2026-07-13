@@ -299,7 +299,7 @@ func validConfigWithParam(param SetParam) *Config {
 	return &Config{
 		ClientID: "id", ClientSecret: "s", RefreshToken: "r",
 		Sets: map[string]Set{
-			"jareds_sleep": {
+			"speaker_sleep": {
 				Params: map[string]SetParam{"uri": param},
 			},
 		},
@@ -312,7 +312,7 @@ func TestValidate_PoolAndDefaultRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for pool+default")
 	}
-	if !strings.Contains(err.Error(), "jareds_sleep") || !strings.Contains(err.Error(), "uri") {
+	if !strings.Contains(err.Error(), "speaker_sleep") || !strings.Contains(err.Error(), "uri") {
 		t.Errorf("expected set/param name in error, got: %v", err)
 	}
 }
@@ -323,7 +323,7 @@ func TestValidate_PoolAndRequiredRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for pool+required")
 	}
-	if !strings.Contains(err.Error(), "jareds_sleep") || !strings.Contains(err.Error(), "uri") {
+	if !strings.Contains(err.Error(), "speaker_sleep") || !strings.Contains(err.Error(), "uri") {
 		t.Errorf("expected set/param name in error, got: %v", err)
 	}
 }
@@ -356,7 +356,7 @@ func TestValidate_PoolMethodInvalidValueRejected(t *testing.T) {
 		t.Fatal("expected validation error for invalid method value")
 	}
 	msg := err.Error()
-	for _, want := range []string{"jareds_sleep", "uri", "method", "random", "date"} {
+	for _, want := range []string{"speaker_sleep", "uri", "method", "random", "date"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("expected %q in error, got: %v", want, msg)
 		}

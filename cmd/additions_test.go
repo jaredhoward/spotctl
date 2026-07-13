@@ -91,7 +91,7 @@ func TestSetsCmd_TemplatedDeviceIDRendersAsPlaceholder(t *testing.T) {
 	cfg := &config.Config{
 		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
 		Sets: map[string]config.Set{
-			"jared_bedroom_play": {
+			"speaker_fade_in_play": {
 				DeviceID: "{{ device }}",
 				Params:   map[string]config.SetParam{"device": {Default: "dev-abc"}},
 				Commands: []config.Command{{Action: "pause"}},
