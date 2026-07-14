@@ -14,6 +14,8 @@ These have been explicitly decided. Do not re-propose alternatives.
 
 `main` is protected: changes land via pull request, not direct pushes. CI (`.github/workflows/ci.yml`) must pass before a PR is mergeable — vet, build, test, a coverage-threshold gate, and `govulncheck`. There are no required human reviews (solo maintainer), so the gate is the CI check itself.
 
+A local pre-commit hook (`.githooks/pre-commit`) mirrors the fast part of that gate — `go vet`, `go build`, `go test` — and blocks the commit if any fail, so every commit that lands (not just a PR's final state) is independently buildable and bisectable. It's not auto-wired by `git clone`; each checkout needs `git config core.hooksPath .githooks` once (already set on the maintainer's local clone — if you're an agent operating in a fresh clone, run this yourself before committing). Run `make check` before opening a PR — it's the full CI mirror (adds the coverage gate and `govulncheck`, which the pre-commit hook skips for speed).
+
 Tagging a release (`git tag vX.Y.Z && git push --tags`) triggers `.github/workflows/release.yml`, which builds the Home Assistant (`linux/arm64`) binary and publishes it as a GitHub Release asset. This replaces manually running `make build-ha-green` and uploading the binary by hand.
 
 ## Versioning policy

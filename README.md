@@ -29,6 +29,16 @@ make build
 make build-ha-green
 ```
 
+### Development
+
+After cloning, enable the pre-commit hook (vets, builds, and tests before every commit):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Run `make check` before opening a PR — it mirrors CI in full (vet, build, test, coverage gate, `govulncheck`).
+
 ## Setup
 
 ### 1. Run the interactive setup

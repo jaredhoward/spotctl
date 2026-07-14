@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Blocks a commit unless the tree still vets, builds, and passes tests —
+# so any commit that lands is independently checkoutable/bisectable, not
+# just the tip of a branch. Mirrors the fast part of ci.yml; the full
+# mirror (coverage gate + govulncheck) is `make check`, run before opening
+# a PR rather than on every commit.
+set -euo pipefail
+
+echo "pre-commit: go vet ./..."
+go vet ./...
+
+echo "pre-commit: go build ./..."
+go build ./...
+
+echo "pre-commit: go test ./..."
+go test ./...
