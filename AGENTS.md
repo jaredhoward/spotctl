@@ -10,6 +10,8 @@ These have been explicitly decided. Do not re-propose alternatives.
 
 **`SpotifyClient` interface extraction was considered and declined.** The original pain point (global var mutation in tests) was resolved by `SetPlayerURL`. The remaining benefit does not justify changing `Action.Dispatch`'s signature.
 
+**`pool` is a reserved `params` key, not a generic per-param feature.** As of the per-entry-overrides change (2026-07-27), `params.pool` always resolves to `uri` — it's no longer nested under a specific param declaration (was `params.uri.pool`). Pool entries are mappings (`{ uri, volume?, shuffle?, repeat? }`), not bare strings; a per-entry `volume`/`shuffle`/`repeat` override requires the set to also declare that param (it supplies the fallback for entries that don't override). Do not reintroduce a generic "any param can have a pool" mechanism — pools are inherently URI-specific.
+
 ## Git workflow
 
 `main` is protected: changes land via pull request, not direct pushes. CI (`.github/workflows/ci.yml`) must pass before a PR is mergeable — vet, build, test, a coverage-threshold gate, and `govulncheck`. There are no required human reviews (solo maintainer), so the gate is the CI check itself.

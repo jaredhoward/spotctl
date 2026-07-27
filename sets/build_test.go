@@ -14,6 +14,26 @@ func minimalCfg(sets map[string]config.Set) *config.Config {
 	return &config.Config{Sets: sets}
 }
 
+// poolEntries builds a []config.PoolEntry from bare URI strings, for tests
+// that only care about plain (non-overridden) pool picks.
+func poolEntries(uris ...string) []config.PoolEntry {
+	entries := make([]config.PoolEntry, len(uris))
+	for i, u := range uris {
+		entries[i] = config.PoolEntry{URI: u}
+	}
+	return entries
+}
+
+// poolEntryURIs extracts the URI field from each entry, for comparing against
+// a picked value in test assertions.
+func poolEntryURIs(entries []config.PoolEntry) []string {
+	uris := make([]string, len(entries))
+	for i, e := range entries {
+		uris[i] = e.URI
+	}
+	return uris
+}
+
 // extractPlay walks rs to find the first *spotify.Play action, descending into
 // nested *RunSet steps. Returns nil if none found.
 func extractPlay(rs *RunSet) *spotify.Play {
@@ -297,9 +317,12 @@ func TestBuild_StepLabelWithPoolShowsActualPick(t *testing.T) {
 	defer func() { config.Now = oldNow }()
 	config.Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
 
-	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
+	pool := poolEntries("spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c")
 	set := config.Set{
-		Params: map[string]config.SetParam{"uri": {Pool: pool, Method: config.PoolMethodDate}},
+		Params: map[string]config.SetParam{
+			"pool":   {Pool: pool},
+			"method": {Default: string(config.PoolMethodDate)},
+		},
 		Commands: []config.Command{
 			{Action: "play", Params: config.CommandParams{URI: "{{ uri }}"}, Confirm: new(false)},
 		},
@@ -310,7 +333,7 @@ func TestBuild_StepLabelWithPoolShowsActualPick(t *testing.T) {
 	}
 	label := rs.Steps[0].label
 	found := false
-	for _, p := range pool {
+	for _, p := range poolEntryURIs(pool) {
 		if strings.Contains(label, "uri="+p) {
 			found = true
 			break
@@ -326,10 +349,11 @@ func TestBuildParams_PoolResolvesToPoolMember(t *testing.T) {
 	defer func() { config.Now = oldNow }()
 	config.Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
 
-	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
+	pool := poolEntries("spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c")
 	set := config.Set{
 		Params: map[string]config.SetParam{
-			"uri": {Pool: pool, Method: config.PoolMethodDate},
+			"pool":   {Pool: pool},
+			"method": {Default: string(config.PoolMethodDate)},
 		},
 		Commands: []config.Command{
 			{Action: "play", Params: config.CommandParams{URI: `{{ uri }}`}, Confirm: new(false)},
@@ -345,7 +369,7 @@ func TestBuildParams_PoolResolvesToPoolMember(t *testing.T) {
 		t.Fatal("no play action found")
 	}
 	found := false
-	for _, p := range pool {
+	for _, p := range poolEntryURIs(pool) {
 		if play.ContextURI == p {
 			found = true
 			break
@@ -361,10 +385,11 @@ func TestBuildParams_PoolViaNestedRunSetIsScopedToInnerSetName(t *testing.T) {
 	defer func() { config.Now = oldNow }()
 	config.Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
 
-	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
+	pool := poolEntries("spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c")
 	inner := config.Set{
 		Params: map[string]config.SetParam{
-			"uri": {Pool: pool, Method: config.PoolMethodDate},
+			"pool":   {Pool: pool},
+			"method": {Default: string(config.PoolMethodDate)},
 		},
 		Commands: []config.Command{
 			{Action: "play", Params: config.CommandParams{URI: `{{ uri }}`}, Confirm: new(false)},
@@ -401,6 +426,87 @@ func TestBuildParams_PoolViaNestedRunSetIsScopedToInnerSetName(t *testing.T) {
 	if viaOuter.ContextURI != direct.ContextURI {
 		t.Errorf("expected pool pick to be scoped to inner set name regardless of caller, got %q via outer vs %q direct",
 			viaOuter.ContextURI, direct.ContextURI)
+	}
+}
+
+// poolOverrideSet builds a single-entry-pool set (deterministic pick) whose
+// entry carries the given overrides, with volume/shuffle/repeat commands
+// wired to the matching declared param via templates — the shape documented
+// in README.md's pool section.
+func poolOverrideSet(entry config.PoolEntry) config.Set {
+	return config.Set{
+		Params: map[string]config.SetParam{
+			"pool":    {Pool: []config.PoolEntry{entry}},
+			"volume":  {Default: "40"},
+			"shuffle": {Default: "true"},
+			"repeat":  {Default: "off"},
+		},
+		Commands: []config.Command{
+			{Action: "play", Params: config.CommandParams{URI: "{{ uri }}"}, Confirm: new(false)},
+			{Action: "volume", Params: config.CommandParams{Level: &config.IntOrTemplate{Expr: "{{ volume }}"}}, Confirm: new(false)},
+			{Action: "shuffle", Params: config.CommandParams{Enabled: &config.BoolOrTemplate{Expr: "{{ shuffle }}"}}, Confirm: new(false)},
+			{Action: "repeat", Params: config.CommandParams{RepeatState: "{{ repeat }}"}, Confirm: new(false)},
+		},
+	}
+}
+
+func extractSteps(rs *RunSet) (vol *spotify.Volume, shuffle *spotify.Shuffle, repeat *spotify.Repeat) {
+	for _, s := range rs.Steps {
+		switch a := s.action.(type) {
+		case *spotify.Volume:
+			vol = a
+		case *spotify.Shuffle:
+			shuffle = a
+		case *spotify.Repeat:
+			repeat = a
+		}
+	}
+	return
+}
+
+func TestBuild_PoolEntryOverridesApplyToSiblingCommands(t *testing.T) {
+	overrideVolume := 25
+	overrideShuffle := false
+	overrideRepeat := "track"
+	set := poolOverrideSet(config.PoolEntry{
+		URI:     "spotify:playlist:abc",
+		Volume:  &overrideVolume,
+		Shuffle: &overrideShuffle,
+		Repeat:  &overrideRepeat,
+	})
+
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	vol, shuffle, repeat := extractSteps(rs)
+	if vol == nil || vol.Level != 25 {
+		t.Errorf("expected overridden volume level 25, got %+v", vol)
+	}
+	if shuffle == nil || shuffle.Enabled != false {
+		t.Errorf("expected overridden shuffle enabled=false, got %+v", shuffle)
+	}
+	if repeat == nil || repeat.State != "track" {
+		t.Errorf("expected overridden repeat state=track, got %+v", repeat)
+	}
+}
+
+func TestBuild_PoolEntryWithoutOverrideFallsBackToSetDefaults(t *testing.T) {
+	set := poolOverrideSet(config.PoolEntry{URI: "spotify:playlist:abc"})
+
+	rs, err := Build("test", set, minimalCfg(nil), 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	vol, shuffle, repeat := extractSteps(rs)
+	if vol == nil || vol.Level != 40 {
+		t.Errorf("expected default volume level 40, got %+v", vol)
+	}
+	if shuffle == nil || shuffle.Enabled != true {
+		t.Errorf("expected default shuffle enabled=true, got %+v", shuffle)
+	}
+	if repeat == nil || repeat.State != "off" {
+		t.Errorf("expected default repeat state=off, got %+v", repeat)
 	}
 }
 
@@ -459,7 +565,7 @@ func TestBuildAction_Previous(t *testing.T) {
 }
 
 func TestBuildAction_Shuffle(t *testing.T) {
-	enabled := true
+	enabled := config.BoolOrTemplate{Value: true}
 	set := config.Set{Commands: []config.Command{
 		{Action: "shuffle", DeviceID: "dev1", Params: config.CommandParams{Enabled: &enabled}, Confirm: new(false)},
 	}}
@@ -706,4 +812,3 @@ func TestBuild_RunSet_NoDeviceOverridePreservesInnerDefault(t *testing.T) {
 		t.Errorf("DeviceID: got %q, want inner-default-device (inner default must survive)", play.DeviceID)
 	}
 }
-

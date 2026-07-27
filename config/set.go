@@ -5,6 +5,7 @@ import (
 	"hash/fnv"
 	"math/rand/v2"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -50,36 +51,74 @@ var ValidRepeatStates = map[string]bool{"off": true, "track": true, "context": t
 type Set struct {
 	// DeviceID is the default device for all commands in this set. A command
 	// may override it by specifying its own params.device_id.
-	DeviceID  string               `yaml:"device_id,omitempty"`
-	OnError   OnFailure            `yaml:"on_error,omitempty"`
-	OnTimeout OnFailure            `yaml:"on_timeout,omitempty"`
+	DeviceID  string    `yaml:"device_id,omitempty"`
+	OnError   OnFailure `yaml:"on_error,omitempty"`
+	OnTimeout OnFailure `yaml:"on_timeout,omitempty"`
 	// Confirm is the set-level default for command confirmation. Commands may
 	// override it. When nil (not set), the global default of true is used.
-	Confirm   *bool                `yaml:"confirm,omitempty"`
+	Confirm *bool `yaml:"confirm,omitempty"`
 	// Timeout is the set-level default timeout for confirmed commands.
 	// Commands may override it. When empty, DefaultConfirmTimeout is used.
-	Timeout   string               `yaml:"timeout,omitempty"`
+	Timeout string `yaml:"timeout,omitempty"`
 	// Params declares the parameters this set accepts, with optional defaults
 	// and required flags. Callers supply values via run_set args or --arg flags.
-	Params    map[string]SetParam  `yaml:"params,omitempty"`
-	Commands  []Command            `yaml:"commands"`
+	Params   map[string]SetParam `yaml:"params,omitempty"`
+	Commands []Command           `yaml:"commands"`
 }
 
 // ResolveParams validates and merges caller-supplied args with declared
-// set-level param defaults/pools. setName scopes pool selection so different
-// sets sharing a param name (e.g. "uri") don't rotate in lockstep. Returns an
-// error if a required param is absent from args, default, and pool. Unknown
-// keys in args are silently ignored.
+// set-level param defaults/pool. setName scopes pool selection so different
+// sets don't rotate in lockstep. Returns an error if a required param is
+// absent from args and default. Unknown keys in args are silently ignored.
+//
+// The reserved "pool" key (if declared) is resolved first: it always
+// produces "uri" (from the picked PoolEntry.URI, or the caller-supplied uri
+// arg if present), plus a pending override for "volume"/"shuffle"/"repeat"
+// for whichever of those the picked entry sets. Those pending overrides are
+// applied after every other declared param has resolved its own
+// default/required value, so a pool-entry override ranks between a caller
+// arg (which always wins) and the target param's own default (which is used
+// when the picked entry has no override) — see PoolEntry.
 func (s *Set) ResolveParams(args map[string]string, setName string) (map[string]string, error) {
 	resolved := make(map[string]string, len(s.Params))
+	pending := make(map[string]string)
+
+	if poolDecl, ok := s.Params["pool"]; ok && len(poolDecl.Pool) > 0 {
+		if val, ok := args["uri"]; ok {
+			resolved["uri"] = val
+		} else {
+			method := PoolMethod("")
+			if methodDecl, ok := s.Params["method"]; ok {
+				method = PoolMethod(methodDecl.Default)
+			}
+			entry := pickFromPool(setName, "uri", poolDecl.Pool, method, Now())
+			resolved["uri"] = entry.URI
+			if entry.Volume != nil {
+				pending["volume"] = fmt.Sprintf("%d", *entry.Volume)
+			}
+			if entry.Shuffle != nil {
+				pending["shuffle"] = fmt.Sprintf("%t", *entry.Shuffle)
+			}
+			if entry.Repeat != nil {
+				pending["repeat"] = *entry.Repeat
+			}
+		}
+	}
+
 	for name, decl := range s.Params {
+		if name == "pool" || name == "method" {
+			continue
+		}
+		if name == "uri" {
+			if _, ok := resolved["uri"]; ok {
+				continue // already resolved via the reserved "pool" key above
+			}
+		}
 		if val, ok := args[name]; ok {
 			if val == "" && decl.Required {
 				return nil, fmt.Errorf("missing required arg %q", name)
 			}
 			resolved[name] = val
-		} else if len(decl.Pool) > 0 {
-			resolved[name] = pickFromPool(setName, name, decl.Pool, decl.Method, Now())
 		} else if decl.Default != "" {
 			resolved[name] = decl.Default
 		} else if decl.Required {
@@ -92,6 +131,14 @@ func (s *Set) ResolveParams(args map[string]string, setName string) (map[string]
 			resolved[name] = ""
 		}
 	}
+
+	for name, val := range pending {
+		if _, ok := args[name]; ok {
+			continue // caller-supplied args always win over a pool-entry override
+		}
+		resolved[name] = val
+	}
+
 	return resolved, nil
 }
 
@@ -102,13 +149,13 @@ func (s *Set) ResolveParams(args map[string]string, setName string) (map[string]
 //
 // PoolMethodDate deterministically picks for the given calendar day — no
 // state is persisted anywhere. The starting position in the pool is a hash
-// of setName and paramName (so different sets/params don't all land on the
-// same entry on the same day); from there the pick advances by one pool
-// position per calendar day. This guarantees: re-running on the same day
-// reproduces the same pick, consecutive days never repeat (advancing by one
-// step in a pool of size > 1 can never return to the same index), and the
-// full pool cycles through evenly every len(pool) days.
-func pickFromPool(setName, paramName string, pool []string, method PoolMethod, now time.Time) string {
+// of setName and paramName (so different sets don't all land on the same
+// entry on the same day); from there the pick advances by one pool position
+// per calendar day. This guarantees: re-running on the same day reproduces
+// the same pick, consecutive days never repeat (advancing by one step in a
+// pool of size > 1 can never return to the same index), and the full pool
+// cycles through evenly every len(pool) days.
+func pickFromPool(setName, paramName string, pool []PoolEntry, method PoolMethod, now time.Time) PoolEntry {
 	n := len(pool)
 	if n == 1 {
 		return pool[0]
@@ -139,17 +186,17 @@ func dayCount(now time.Time) int {
 
 // Command is a single action within a set.
 type Command struct {
-	Name      string        `yaml:"name,omitempty"`
-	Action    string        `yaml:"action"`
-	DeviceID  string        `yaml:"device_id,omitempty"`
-	Params    CommandParams `yaml:"params,omitempty"`
+	Name     string        `yaml:"name,omitempty"`
+	Action   string        `yaml:"action"`
+	DeviceID string        `yaml:"device_id,omitempty"`
+	Params   CommandParams `yaml:"params,omitempty"`
 	// Confirm is a pointer so that an explicit confirm:false in YAML can be
 	// distinguished from the field being absent. When nil (not set), the
 	// default is true — confirmation is on unless explicitly opted out.
-	Confirm   *bool         `yaml:"confirm,omitempty"`
-	Timeout   string        `yaml:"timeout,omitempty"`
-	OnError   OnFailure     `yaml:"on_error,omitempty"`
-	OnTimeout OnFailure     `yaml:"on_timeout,omitempty"`
+	Confirm   *bool     `yaml:"confirm,omitempty"`
+	Timeout   string    `yaml:"timeout,omitempty"`
+	OnError   OnFailure `yaml:"on_error,omitempty"`
+	OnTimeout OnFailure `yaml:"on_timeout,omitempty"`
 }
 
 // ResolvedDeviceID returns the command's own device_id when set, otherwise
@@ -269,33 +316,116 @@ func (v *IntOrTemplate) Resolved() (int, error) {
 	return v.Value, nil
 }
 
-// SetParam declares a single parameter a set accepts, with an optional
-// default, a required flag, or a pool of candidate values to pick from (see
-// PoolMethod). Pool is mutually exclusive with Default and Required, and
-// Method is only meaningful alongside Pool — enforced in Config.validate.
+// BoolOrTemplate holds a shuffle-enabled flag that may be a literal bool or a
+// {{ name }} placeholder resolved at interpolation time.
+type BoolOrTemplate struct {
+	Value bool
+	Expr  string // non-empty when a template placeholder was specified
+}
+
+func (v *BoolOrTemplate) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Try bool first.
+	var b bool
+	if err := unmarshal(&b); err == nil {
+		v.Value = b
+		return nil
+	}
+	// Fall back to string (template expression).
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	v.Expr = s
+	return nil
+}
+
+func (v BoolOrTemplate) MarshalYAML() (interface{}, error) {
+	if v.Expr != "" {
+		return v.Expr, nil
+	}
+	return v.Value, nil
+}
+
+// Resolved returns the bool value after interpolation, or an error if the
+// expression hasn't been resolved yet.
+func (v *BoolOrTemplate) Resolved() (bool, error) {
+	if v.Expr != "" {
+		return false, fmt.Errorf("enabled expression %q was not resolved before use", v.Expr)
+	}
+	return v.Value, nil
+}
+
+// PoolEntry is one candidate in the reserved "pool" params key (see SetParam
+// and Set.ResolveParams). URI is the value picked when this entry is chosen.
+// Volume, Shuffle, and Repeat let this specific entry override the set's own
+// volume/shuffle/repeat params for that pick only; a nil field falls back to
+// whatever the set's own "volume"/"shuffle"/"repeat" param resolves to.
+type PoolEntry struct {
+	URI     string  `yaml:"uri"`
+	Volume  *int    `yaml:"volume,omitempty"`
+	Shuffle *bool   `yaml:"shuffle,omitempty"`
+	Repeat  *string `yaml:"repeat,omitempty"`
+}
+
+// SetParam declares a single parameter a set accepts: a fixed default or a
+// required flag. The reserved key "pool" is special-cased by
+// Set.ResolveParams: instead of resolving to a param named "pool", its
+// entries are picked from and resolved to "uri" (see PoolEntry). The reserved
+// key "method" (PoolMethodRandom/PoolMethodDate, via the same scalar-default
+// shorthand as any other param) controls how "pool" picks — enforced in
+// Config.validate.
+//
+// UnmarshalYAML accepts three shapes: a bare sequence of PoolEntry (only
+// meaningful under the "pool" key), a bare scalar as shorthand for Default
+// (e.g. `volume: 40`), or the full mapping form (`default`/`required`).
 type SetParam struct {
-	Default  string     `yaml:"default,omitempty"`
-	Required bool       `yaml:"required,omitempty"`
-	Pool     []string   `yaml:"pool,omitempty"`
-	Method   PoolMethod `yaml:"method,omitempty"`
+	Default  string      `yaml:"default,omitempty"`
+	Required bool        `yaml:"required,omitempty"`
+	Pool     []PoolEntry `yaml:"pool,omitempty"`
+}
+
+func (p *SetParam) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var entries []PoolEntry
+	if err := unmarshal(&entries); err == nil {
+		p.Pool = entries
+		return nil
+	}
+	var scalar interface{}
+	if err := unmarshal(&scalar); err == nil {
+		switch v := scalar.(type) {
+		case string:
+			p.Default = v
+			return nil
+		case bool, int:
+			p.Default = fmt.Sprintf("%v", v)
+			return nil
+		}
+	}
+	type raw SetParam
+	var r raw
+	if err := unmarshal(&r); err != nil {
+		return err
+	}
+	*p = SetParam(r)
+	return nil
 }
 
 // CommandParams holds all possible parameters for any action type.
 type CommandParams struct {
-	URI         string            `yaml:"uri,omitempty"`
-	PlaylistID  string            `yaml:"playlist,omitempty"`
-	TrackID     string            `yaml:"track,omitempty"`
-	AlbumID     string            `yaml:"album,omitempty"`
-	ArtistID    string            `yaml:"artist,omitempty"`
-	Level       *IntOrTemplate    `yaml:"level,omitempty"`
-	Play        *bool             `yaml:"play,omitempty"`
-	Enabled     *bool             `yaml:"enabled,omitempty"`
-	Duration    string            `yaml:"duration,omitempty"`
-	Set         string            `yaml:"set,omitempty"`
-	RepeatState string            `yaml:"state,omitempty"` // off | track | context
+	URI         string          `yaml:"uri,omitempty"`
+	PlaylistID  string          `yaml:"playlist,omitempty"`
+	TrackID     string          `yaml:"track,omitempty"`
+	AlbumID     string          `yaml:"album,omitempty"`
+	ArtistID    string          `yaml:"artist,omitempty"`
+	Level       *IntOrTemplate  `yaml:"level,omitempty"`
+	Play        *bool           `yaml:"play,omitempty"`
+	Enabled     *BoolOrTemplate `yaml:"enabled,omitempty"`
+	Duration    string          `yaml:"duration,omitempty"`
+	Set         string          `yaml:"set,omitempty"`
+	RepeatState string          `yaml:"state,omitempty"` // off | track | context
 	// Forwarded captures any YAML keys under params not claimed by named fields.
 	// For run_set, these are passed as args to the target set.
-	Forwarded   map[string]string `yaml:",inline"`
+	Forwarded map[string]string `yaml:",inline"`
 }
 
 // ForwardedArgs collects all param values suitable for passing to a run_set
@@ -368,12 +498,15 @@ func (p *CommandParams) ResolveContextURI() (string, error) {
 	return "", nil
 }
 
-// ShuffleEnabled returns the value of Enabled, defaulting to true.
-func (p *CommandParams) ShuffleEnabled() bool {
+// ShuffleEnabled returns the resolved value of Enabled, defaulting to true
+// when Enabled is nil. Returns an error if Enabled holds a template
+// expression that was not resolved (via InterpolateParams) before this is
+// called.
+func (p *CommandParams) ShuffleEnabled() (bool, error) {
 	if p.Enabled == nil {
-		return true
+		return true, nil
 	}
-	return *p.Enabled
+	return p.Enabled.Resolved()
 }
 
 // TransferPlay returns the value of Play, defaulting to false.
@@ -444,9 +577,9 @@ func interpolateString(s string, data map[string]string) (string, error) {
 	return result, nil
 }
 
-// InterpolateParams returns a copy of CommandParams with all string fields
-// rendered against the resolved param map. Non-string fields (Level, Play,
-// Enabled) are copied as-is. Unknown placeholder keys render as empty strings.
+// InterpolateParams returns a copy of CommandParams with all string fields,
+// plus Level.Expr and Enabled.Expr, rendered against the resolved param map.
+// Play is copied as-is. Unknown placeholder keys render as empty strings.
 func (p *CommandParams) InterpolateParams(resolved map[string]string) (CommandParams, error) {
 	out := *p // shallow copy; pointer fields (Level, Play, Enabled) are overwritten below — add new pointer fields there too
 	type strField struct {
@@ -481,6 +614,18 @@ func (p *CommandParams) InterpolateParams(resolved map[string]string) (CommandPa
 			return CommandParams{}, fmt.Errorf("level expression %q resolved to %q which is not an integer", p.Level.Expr, interpolated)
 		}
 		out.Level = &IntOrTemplate{Value: i}
+	}
+	// Interpolate Enabled.Expr if present.
+	if p.Enabled != nil && p.Enabled.Expr != "" {
+		interpolated, err := interpolateString(p.Enabled.Expr, resolved)
+		if err != nil {
+			return CommandParams{}, err
+		}
+		b, err := strconv.ParseBool(interpolated)
+		if err != nil {
+			return CommandParams{}, fmt.Errorf("enabled expression %q resolved to %q which is not a boolean", p.Enabled.Expr, interpolated)
+		}
+		out.Enabled = &BoolOrTemplate{Value: b}
 	}
 	return out, nil
 }

@@ -46,7 +46,11 @@ func actionDetail(c config.Command) []string {
 			}
 		}
 	case "shuffle":
-		parts = append(parts, fmt.Sprintf("enabled=%v", c.Params.ShuffleEnabled()))
+		if c.Params.Enabled != nil && c.Params.Enabled.Expr != "" {
+			parts = append(parts, fmt.Sprintf("enabled=%s", ParamLabel(c.Params.Enabled.Expr)))
+		} else if enabled, err := c.Params.ShuffleEnabled(); err == nil {
+			parts = append(parts, fmt.Sprintf("enabled=%v", enabled))
+		}
 	case "repeat":
 		if c.Params.RepeatState != "" {
 			parts = append(parts, fmt.Sprintf("state=%s", c.Params.RepeatState))

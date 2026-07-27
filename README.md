@@ -172,7 +172,7 @@ sets:
 | `on_timeout` | `fail` | Default timeout policy for all commands in the set. |
 | `confirm` | `true` | Default confirmation setting for all commands in the set. Commands may override it. |
 | `timeout` | `15s` | Default timeout for all commands in the set. Commands may override it. |
-| `params` | — | Named parameters the set accepts. Each entry has `required: true/false`, an optional `default`, or a `pool` (list of candidate values, picked automatically — see below). `pool` is mutually exclusive with `required`/`default`. Callers supply non-pool values via `--<name>` flags on the CLI, or as sibling keys under `run_set` params. |
+| `params` | — | Named parameters the set accepts. Each entry has `required: true/false` and/or a `default` — the default can be written as a bare scalar (`volume: 40`) or the full mapping form (`volume: { default: "40" }`). Callers supply values via `--<name>` flags on the CLI, or as sibling keys under `run_set` params. The reserved key `pool` (list of candidates, picked automatically — see below) always resolves to `uri`; `pool` and `uri` can't both be declared on the same set. |
 
 ### Set commands
 
@@ -237,7 +237,7 @@ To use a param value inside a command, use `{{ name }}` syntax:
 
 #### Picking from a pool of values with `pool`
 
-A declared param can list a `pool` of candidate values instead of a fixed `default`. Each run resolves the param to one pool entry, the same way as `default` (i.e. usable via `{{ uri }}` in commands or forwarded to a nested `run_set`). An optional `method` controls how the entry is picked; if omitted, it defaults to `random`.
+The reserved params key `pool` lists candidate entries to pick from on each run, resolved to `uri` — usable via `{{ uri }}` in commands or forwarded to a nested `run_set`, the same way any other param is. A set can't declare both `pool` and `uri`. An optional sibling `method` controls how the entry is picked; if omitted, it defaults to `random`.
 
 ##### `method: random` (default)
 
@@ -248,11 +248,10 @@ sets:
   speaker_daily_mix:
     device_id: DEVICE_ID
     params:
-      uri:
-        pool:
-          - spotify:playlist:AAAAAAAAAAAAAAAAAAAA
-          - spotify:playlist:BBBBBBBBBBBBBBBBBBBB
-          - spotify:playlist:CCCCCCCCCCCCCCCCCCCC
+      pool:
+        - uri: spotify:playlist:AAAAAAAAAAAAAAAAAAAA
+        - uri: spotify:playlist:BBBBBBBBBBBBBBBBBBBB
+        - uri: spotify:playlist:CCCCCCCCCCCCCCCCCCCC
     commands:
       - action: play
         params:
@@ -272,12 +271,11 @@ sets:
   random_sleep:
     device_id: DEVICE_ID
     params:
-      uri:
-        pool:
-          - spotify:playlist:AAAAAAAAAAAAAAAAAAAA
-          - spotify:playlist:BBBBBBBBBBBBBBBBBBBB
-          - spotify:playlist:CCCCCCCCCCCCCCCCCCCC
-        method: date
+      pool:
+        - uri: spotify:playlist:AAAAAAAAAAAAAAAAAAAA
+        - uri: spotify:playlist:BBBBBBBBBBBBBBBBBBBB
+        - uri: spotify:playlist:CCCCCCCCCCCCCCCCCCCC
+      method: date
     commands:
       - action: play
         params:
@@ -296,7 +294,43 @@ sets:
 - The immediately preceding calendar day's pick is never repeated.
 - Over `len(pool)` consecutive days, every pool entry appears exactly once.
 
-`pool` is mutually exclusive with `default` and `required` on the same param — `spotctl` rejects config where both are set. `method`, if set, requires `pool` to also be set, and must be `random` or `date`.
+`default` and `required` have no meaning on the reserved `pool` key — `spotctl` rejects config where either is set on it. `method`, if set, requires `pool` to also be set, and must be `random` or `date`.
+
+##### Per-entry volume/shuffle/repeat overrides
+
+A pool entry can override this set's own `volume`/`shuffle`/`repeat` params for that pick only, when a specific playlist needs different treatment than the rest of the pool (e.g. one track plays louder than the others, or shouldn't shuffle). Declare `volume`/`shuffle`/`repeat` as regular params (these become the fallback for entries that don't override them) and wire commands to them the same way as `uri`:
+
+```yaml
+sets:
+  daily_mix:
+    device_id: DEVICE_ID
+    params:
+      pool:
+        - uri: spotify:playlist:AAAAAAAAAAAAAAAAAAAA
+        - uri: spotify:playlist:BBBBBBBBBBBBBBBBBBBB
+          volume: 25          # plays quieter than the rest of the pool
+        - uri: spotify:playlist:CCCCCCCCCCCCCCCCCCCC
+          shuffle: false       # played in order, unlike the rest of the pool
+      method: date
+      volume: 40
+      shuffle: true
+      repeat: off
+    commands:
+      - action: play
+        params:
+          uri: '{{ uri }}'
+      - action: volume
+        params:
+          level: '{{ volume }}'
+      - action: shuffle
+        params:
+          enabled: '{{ shuffle }}'
+      - action: repeat
+        params:
+          state: '{{ repeat }}'
+```
+
+A pool entry that sets `volume`/`shuffle`/`repeat` requires the set to declare a matching `volume`/`shuffle`/`repeat` param (`spotctl` rejects config otherwise) — that param supplies the fallback value for every entry that doesn't override it. Precedence, highest to lowest: a caller-supplied `--volume`/`--shuffle`/`--repeat` (or `run_set` arg) always wins; then the picked entry's own override; then the set's declared `default`.
 
 #### Overriding the device at runtime
 
@@ -330,8 +364,7 @@ sets:
   speaker_sleep:
     params:
       device: {}
-      uri:
-        pool: [...]
+      pool: [...]
     commands:
       - action: run_set
         device_id: '{{ device }}'

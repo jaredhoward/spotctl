@@ -30,10 +30,19 @@ redirect_uri: https://your-redirect-uri
 #   params     - named parameters the set accepts, each with an optional
 #                default and required flag. Supply values via --<name>=<value>
 #                on the CLI, or as sibling keys under run_set params.
+#                A param's default can be written as a bare scalar
+#                (volume: 40) instead of the full mapping form
+#                (volume: { default: "40" }).
 #
 # To reference a param inside a command, use {{ name }} syntax:
 #   uri: '{{ uri }}'
 # In 'spotctl sets' output, these render as <name> (e.g. uri=<uri>).
+#
+# The reserved "pool" params key picks one of several candidates on each run
+# (randomly, or deterministically by calendar date with method: date) and
+# always resolves it to "uri". A pool entry can be a bare uri, or a mapping
+# that also overrides this set's own volume/shuffle/repeat params for that
+# pick only — see daily_mix below.
 
 sets:
   # Play a playlist with shuffle and repeat on a specific device.
@@ -153,3 +162,35 @@ sets:
       - action: volume
         params:
           level: '{{ volume }}'
+
+  # Pool of candidate playlists, picked deterministically by calendar date.
+  # "Release Radar" plays quieter than the rest of the pool; every other
+  # entry falls back to the set's own volume/shuffle/repeat params.
+  daily_mix:
+    device_id: YOUR_SPOTIFY_DEVICE_ID
+    params:
+      pool:
+        - uri: spotify:playlist:YOUR_DAILY_MIX_1_ID
+        - uri: spotify:playlist:YOUR_DAILY_MIX_2_ID
+        - uri: spotify:playlist:YOUR_RELEASE_RADAR_ID
+          volume: 25
+      method: date
+      volume: 40
+      shuffle: true
+      repeat: off
+    commands:
+      - action: play
+        params:
+          uri: '{{ uri }}'
+        confirm: true
+      - action: volume
+        params:
+          level: '{{ volume }}'
+      - action: shuffle
+        params:
+          enabled: '{{ shuffle }}'
+        timeout: 5s
+      - action: repeat
+        params:
+          state: '{{ repeat }}'
+        timeout: 5s
