@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/jaredhoward/spotctl/config"
+	"github.com/jaredhoward/spotctl/sets"
 	"github.com/jaredhoward/spotctl/spotify"
 )
 
@@ -32,6 +33,62 @@ func TestExecute_CoversRootExecute(t *testing.T) {
 	}
 	if !strings.Contains(string(output), "test-1.0") {
 		t.Fatalf("version not in output: %q", string(output))
+	}
+}
+
+func TestVerboseFlag_AppliesViaNormalParsing(t *testing.T) {
+	oldVerbose, oldSetsVerbose, oldSpotifyVerbose := verbose, sets.Verbose, spotify.Verbose
+	defer func() {
+		verbose, sets.Verbose, spotify.Verbose = oldVerbose, oldSetsVerbose, oldSpotifyVerbose
+		rootCmd.SetArgs([]string{})
+	}()
+	verbose = false
+	sets.Verbose = false
+	spotify.Verbose = false
+
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	rootCmd.SetArgs([]string{"--verbose", "version"})
+	execErr := Execute()
+	w.Close()
+	os.Stdout = oldStdout
+	io.ReadAll(r)
+	if execErr != nil {
+		t.Fatalf("unexpected error: %v", execErr)
+	}
+
+	if !verbose || !sets.Verbose || !spotify.Verbose {
+		t.Errorf("expected --verbose to propagate: verbose=%v sets.Verbose=%v spotify.Verbose=%v", verbose, sets.Verbose, spotify.Verbose)
+	}
+}
+
+func TestVerboseFlag_AppliesViaRunCmdManualParsing(t *testing.T) {
+	oldVerbose, oldSetsVerbose, oldSpotifyVerbose := verbose, sets.Verbose, spotify.Verbose
+	oldConfigPath := configPath
+	defer func() {
+		verbose, sets.Verbose, spotify.Verbose = oldVerbose, oldSetsVerbose, oldSpotifyVerbose
+		configPath = oldConfigPath
+	}()
+	verbose = false
+	sets.Verbose = false
+	spotify.Verbose = false
+
+	configPath = writeTempConfig(t, &config.Config{
+		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
+	})
+
+	// runCmd disables cobra's flag parsing, so --verbose must be detected by
+	// its own manual token scan (see cmd/sets.go). The set doesn't exist, so
+	// this errors out after parsing — that's fine, we only care that verbose
+	// was applied before the error.
+	_ = runCmd.RunE(runCmd, []string{"-v", "nonexistent"})
+
+	if !verbose || !sets.Verbose || !spotify.Verbose {
+		t.Errorf("expected -v to propagate via runCmd's manual parsing: verbose=%v sets.Verbose=%v spotify.Verbose=%v", verbose, sets.Verbose, spotify.Verbose)
 	}
 }
 
