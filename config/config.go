@@ -16,12 +16,12 @@ const DefaultConfigPath = "./config.yaml"
 const DefaultPlaybackPollInterval = 500 * time.Millisecond
 
 type Config struct {
-	ClientID             string          `yaml:"client_id"`
-	ClientSecret         string          `yaml:"client_secret"`
-	RefreshToken         string          `yaml:"refresh_token"`
-	RedirectURI          string          `yaml:"redirect_uri"`
-	PlaybackPollInterval string          `yaml:"playback_poll_interval,omitempty"`
-	Sets                 map[string]Set  `yaml:"sets,omitempty"`
+	ClientID             string            `yaml:"client_id"`
+	ClientSecret         string            `yaml:"client_secret"`
+	RefreshToken         string            `yaml:"refresh_token"`
+	RedirectURI          string            `yaml:"redirect_uri"`
+	PlaybackPollInterval string            `yaml:"playback_poll_interval,omitempty"`
+	Sets                 map[string]Set    `yaml:"sets,omitempty"`
 	DeviceNames          map[string]string `yaml:"device_names"`
 }
 
@@ -155,17 +155,47 @@ func (c *Config) validate() error {
 		sort.Strings(paramNames)
 		for _, pname := range paramNames {
 			decl := set.Params[pname]
-			if len(decl.Pool) > 0 && decl.Default != "" {
-				return fmt.Errorf("config field sets.%s.params.%s: pool and default are mutually exclusive", name, pname)
+			if pname != "pool" && len(decl.Pool) > 0 {
+				return fmt.Errorf("config field sets.%s.params.%s: pool entries are only meaningful under the reserved \"pool\" key", name, pname)
 			}
-			if len(decl.Pool) > 0 && decl.Required {
-				return fmt.Errorf("config field sets.%s.params.%s: pool and required are mutually exclusive (pool always yields a value)", name, pname)
-			}
-			if len(decl.Pool) == 0 && decl.Method != "" {
-				return fmt.Errorf("config field sets.%s.params.%s: method requires pool to be set", name, pname)
-			}
-			if err := validatePoolMethod(decl.Method, fmt.Sprintf("sets.%s.params.%s.method", name, pname)); err != nil {
-				return err
+			switch pname {
+			case "pool":
+				if decl.Default != "" {
+					return fmt.Errorf("config field sets.%s.params.pool: default has no meaning on the reserved pool key", name)
+				}
+				if decl.Required {
+					return fmt.Errorf("config field sets.%s.params.pool: required has no meaning on the reserved pool key (pool always yields a value)", name)
+				}
+				if _, hasURI := set.Params["uri"]; hasURI {
+					return fmt.Errorf("config field sets.%s.params: pool and uri are mutually exclusive (pool always resolves uri)", name)
+				}
+				for i, entry := range decl.Pool {
+					if entry.Repeat != nil && !ValidRepeatStates[*entry.Repeat] {
+						return fmt.Errorf("config field sets.%s.params.pool[%d].repeat has invalid value %q (must be off, track, or context)", name, i, *entry.Repeat)
+					}
+					if entry.Volume != nil {
+						if _, ok := set.Params["volume"]; !ok {
+							return fmt.Errorf("config field sets.%s.params.pool[%d] sets volume but sets.%s.params.volume is not declared", name, i, name)
+						}
+					}
+					if entry.Shuffle != nil {
+						if _, ok := set.Params["shuffle"]; !ok {
+							return fmt.Errorf("config field sets.%s.params.pool[%d] sets shuffle but sets.%s.params.shuffle is not declared", name, i, name)
+						}
+					}
+					if entry.Repeat != nil {
+						if _, ok := set.Params["repeat"]; !ok {
+							return fmt.Errorf("config field sets.%s.params.pool[%d] sets repeat but sets.%s.params.repeat is not declared", name, i, name)
+						}
+					}
+				}
+			case "method":
+				if len(set.Params["pool"].Pool) == 0 {
+					return fmt.Errorf("config field sets.%s.params.method: method requires pool to be set", name)
+				}
+				if err := validatePoolMethod(PoolMethod(decl.Default), fmt.Sprintf("sets.%s.params.method", name)); err != nil {
+					return err
+				}
 			}
 		}
 		for i, cmd := range set.Commands {

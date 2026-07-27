@@ -678,7 +678,7 @@ func TestCommandLabel(t *testing.T) {
 		},
 		{
 			name: "shuffle disabled",
-			cmd:  config.Command{Action: "shuffle", Params: config.CommandParams{Enabled: func() *bool { b := false; return &b }()}},
+			cmd:  config.Command{Action: "shuffle", Params: config.CommandParams{Enabled: &config.BoolOrTemplate{Value: false}}},
 			want: []string{"shuffle", "enabled=false"},
 		},
 		{

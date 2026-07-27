@@ -117,7 +117,7 @@ func TestSetRoundTrip(t *testing.T) {
 	}
 
 	c1 := mv.Commands[1]
-	if c1.Action != "shuffle" || c1.Params.Enabled == nil || !*c1.Params.Enabled {
+	if c1.Action != "shuffle" || c1.Params.Enabled == nil || !c1.Params.Enabled.Value {
 		t.Errorf("command 1 shuffle unexpected: %+v", c1)
 	}
 
@@ -328,7 +328,7 @@ func TestResolveParams(t *testing.T) {
 
 	t.Run("pool ignored when arg provided", func(t *testing.T) {
 		s := Set{Params: map[string]SetParam{
-			"uri": {Pool: []string{"a", "b", "c"}},
+			"pool": {Pool: poolEntries("a", "b", "c")},
 		}}
 		got, err := s.ResolveParams(map[string]string{"uri": "spotify:track:override"}, "test")
 		if err != nil {
@@ -339,9 +339,10 @@ func TestResolveParams(t *testing.T) {
 		}
 	})
 
-	t.Run("empty pool falls back to default", func(t *testing.T) {
+	t.Run("empty pool ignored, uri falls back to default", func(t *testing.T) {
 		s := Set{Params: map[string]SetParam{
-			"uri": {Pool: []string{}, Default: "spotify:track:fallback"},
+			"pool": {Pool: []PoolEntry{}},
+			"uri":  {Default: "spotify:track:fallback"},
 		}}
 		got, err := s.ResolveParams(nil, "test")
 		if err != nil {
@@ -353,6 +354,25 @@ func TestResolveParams(t *testing.T) {
 	})
 }
 
+// poolEntries builds a []PoolEntry from bare URI strings, for tests that only
+// care about plain (non-overridden) pool picks.
+func poolEntries(uris ...string) []PoolEntry {
+	entries := make([]PoolEntry, len(uris))
+	for i, u := range uris {
+		entries[i] = PoolEntry{URI: u}
+	}
+	return entries
+}
+
+// poolEntryURIs extracts the URI field from each entry.
+func poolEntryURIs(entries []PoolEntry) []string {
+	uris := make([]string, len(entries))
+	for i, e := range entries {
+		uris[i] = e.URI
+	}
+	return uris
+}
+
 // ----- pool selection --------------------------------------------------------
 
 func TestResolveParams_PoolSameDayIsIdempotent(t *testing.T) {
@@ -361,7 +381,8 @@ func TestResolveParams_PoolSameDayIsIdempotent(t *testing.T) {
 	Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
 
 	s := Set{Params: map[string]SetParam{
-		"uri": {Pool: []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}, Method: PoolMethodDate},
+		"pool":   {Pool: poolEntries("spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c")},
+		"method": {Default: string(PoolMethodDate)},
 	}}
 
 	got1, err := s.ResolveParams(nil, "speaker_sleep")
@@ -382,7 +403,8 @@ func TestResolveParams_PoolNeverRepeatsAdjacentDay(t *testing.T) {
 	defer func() { Now = oldNow }()
 
 	s := Set{Params: map[string]SetParam{
-		"uri": {Pool: []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}, Method: PoolMethodDate},
+		"pool":   {Pool: poolEntries("spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c")},
+		"method": {Default: string(PoolMethodDate)},
 	}}
 
 	base := time.Date(2026, 1, 1, 22, 0, 0, 0, time.UTC)
@@ -403,7 +425,7 @@ func TestResolveParams_PoolNeverRepeatsAdjacentDay(t *testing.T) {
 
 func TestResolveParams_PoolSingleEntry(t *testing.T) {
 	s := Set{Params: map[string]SetParam{
-		"uri": {Pool: []string{"spotify:playlist:only"}},
+		"pool": {Pool: poolEntries("spotify:playlist:only")},
 	}}
 	for i := 0; i < 5; i++ {
 		got, err := s.ResolveParams(nil, "test")
@@ -431,8 +453,11 @@ func TestResolveParams_PoolCyclesEvenlyOverFullPeriod(t *testing.T) {
 	oldNow := Now
 	defer func() { Now = oldNow }()
 
-	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
-	s := Set{Params: map[string]SetParam{"uri": {Pool: pool, Method: PoolMethodDate}}}
+	pool := poolEntries("spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c")
+	s := Set{Params: map[string]SetParam{
+		"pool":   {Pool: pool},
+		"method": {Default: string(PoolMethodDate)},
+	}}
 
 	base := time.Date(2026, 3, 1, 22, 0, 0, 0, time.UTC)
 	seen := make(map[string]bool)
@@ -455,14 +480,14 @@ func TestResolveParams_PoolDefaultMethodIsRandom(t *testing.T) {
 	defer func() { RandIntn = oldRandIntn }()
 	RandIntn = func(n int) int { return 1 }
 
-	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
-	s := Set{Params: map[string]SetParam{"uri": {Pool: pool}}}
+	pool := poolEntries("spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c")
+	s := Set{Params: map[string]SetParam{"pool": {Pool: pool}}}
 
 	got, err := s.ResolveParams(nil, "speaker_daily_mix")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got["uri"] != pool[1] {
+	if got["uri"] != pool[1].URI {
 		t.Errorf("expected default method to be random and pick pool[1], got %q", got["uri"])
 	}
 }
@@ -473,8 +498,11 @@ func TestResolveParams_PoolMethodRandomIgnoresNow(t *testing.T) {
 	defer func() { Now = oldNow; RandIntn = oldRandIntn }()
 	Now = func() time.Time { return time.Date(2026, 7, 6, 22, 0, 0, 0, time.UTC) }
 
-	pool := []string{"spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c"}
-	s := Set{Params: map[string]SetParam{"uri": {Pool: pool, Method: PoolMethodRandom}}}
+	pool := poolEntries("spotify:playlist:a", "spotify:playlist:b", "spotify:playlist:c")
+	s := Set{Params: map[string]SetParam{
+		"pool":   {Pool: pool},
+		"method": {Default: string(PoolMethodRandom)},
+	}}
 
 	RandIntn = func(n int) int { return 0 }
 	got1, err := s.ResolveParams(nil, "speaker_daily_mix")
@@ -488,6 +516,87 @@ func TestResolveParams_PoolMethodRandomIgnoresNow(t *testing.T) {
 	}
 	if got1["uri"] == got2["uri"] {
 		t.Errorf("expected random method to ignore Now and follow RandIntn, got same pick %q both times", got1["uri"])
+	}
+}
+
+func TestResolveParams_PoolEntryVolumeOverride(t *testing.T) {
+	vol := 25
+	s := Set{Params: map[string]SetParam{
+		"pool":   {Pool: []PoolEntry{{URI: "spotify:playlist:only", Volume: &vol}}},
+		"volume": {Default: "40"},
+	}}
+	got, err := s.ResolveParams(nil, "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["volume"] != "25" {
+		t.Errorf("volume: got %q, want entry override 25", got["volume"])
+	}
+}
+
+func TestResolveParams_PoolEntryWithoutOverrideFallsBackToDefault(t *testing.T) {
+	s := Set{Params: map[string]SetParam{
+		"pool":   {Pool: []PoolEntry{{URI: "spotify:playlist:only"}}},
+		"volume": {Default: "40"},
+	}}
+	got, err := s.ResolveParams(nil, "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["volume"] != "40" {
+		t.Errorf("volume: got %q, want set default 40", got["volume"])
+	}
+}
+
+func TestResolveParams_PoolEntryOverrideLosesToCallerArg(t *testing.T) {
+	vol := 25
+	s := Set{Params: map[string]SetParam{
+		"pool":   {Pool: []PoolEntry{{URI: "spotify:playlist:only", Volume: &vol}}},
+		"volume": {Default: "40"},
+	}}
+	got, err := s.ResolveParams(map[string]string{"volume": "90"}, "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["volume"] != "90" {
+		t.Errorf("volume: got %q, want caller-supplied 90", got["volume"])
+	}
+}
+
+func TestResolveParams_PoolEntryShuffleAndRepeatOverride(t *testing.T) {
+	shuffle := false
+	repeat := "track"
+	s := Set{Params: map[string]SetParam{
+		"pool":    {Pool: []PoolEntry{{URI: "spotify:playlist:only", Shuffle: &shuffle, Repeat: &repeat}}},
+		"shuffle": {Default: "true"},
+		"repeat":  {Default: "off"},
+	}}
+	got, err := s.ResolveParams(nil, "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["shuffle"] != "false" {
+		t.Errorf("shuffle: got %q, want entry override false", got["shuffle"])
+	}
+	if got["repeat"] != "track" {
+		t.Errorf("repeat: got %q, want entry override track", got["repeat"])
+	}
+}
+
+func TestResolveParams_PoolAndURICoexistUsesPoolPick(t *testing.T) {
+	// Defensive: ResolveParams doesn't itself enforce the pool+uri mutual
+	// exclusion (Config.validate does), but it must still behave sanely if
+	// both happen to be declared, favoring the pool pick.
+	s := Set{Params: map[string]SetParam{
+		"pool": {Pool: poolEntries("spotify:playlist:only")},
+		"uri":  {Default: "spotify:playlist:should-not-be-used"},
+	}}
+	got, err := s.ResolveParams(nil, "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["uri"] != "spotify:playlist:only" {
+		t.Errorf("uri: got %q, want pool pick", got["uri"])
 	}
 }
 
@@ -680,13 +789,27 @@ func TestEffectiveOnTimeout(t *testing.T) {
 
 func TestShuffleEnabled(t *testing.T) {
 	p := CommandParams{}
-	if !p.ShuffleEnabled() {
+	enabled, err := p.ShuffleEnabled()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !enabled {
 		t.Error("expected default ShuffleEnabled to be true")
 	}
-	f := false
-	p.Enabled = &f
-	if p.ShuffleEnabled() {
+	p.Enabled = &BoolOrTemplate{Value: false}
+	enabled, err = p.ShuffleEnabled()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if enabled {
 		t.Error("expected ShuffleEnabled false when Enabled=false")
+	}
+}
+
+func TestShuffleEnabled_UnresolvedExprErrors(t *testing.T) {
+	p := CommandParams{Enabled: &BoolOrTemplate{Expr: "still-a-template"}}
+	if _, err := p.ShuffleEnabled(); err == nil {
+		t.Fatal("expected error for unresolved shuffle expression")
 	}
 }
 
@@ -1112,7 +1235,7 @@ func TestInterpolateParams_LevelExpr(t *testing.T) {
 
 func TestForwardedArgs_InlineForwarded(t *testing.T) {
 	p := CommandParams{
-		Set:      "my_set",
+		Set:       "my_set",
 		Forwarded: map[string]string{"custom_key": "custom_val"},
 	}
 	got := p.ForwardedArgs()
@@ -1150,6 +1273,306 @@ sets:
 	if err == nil {
 		t.Fatal("expected error when level is a YAML sequence (not int or string)")
 	}
+}
+
+// ----- BoolOrTemplate --------------------------------------------------------
+
+func TestBoolOrTemplate_UnmarshalYAML(t *testing.T) {
+	t.Run("literal bool", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    commands:
+      - action: shuffle
+        params:
+          enabled: false
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		enabled := cfg.Sets["test"].Commands[0].Params.Enabled
+		if enabled == nil || enabled.Value != false || enabled.Expr != "" {
+			t.Errorf("expected Value=false, got %+v", enabled)
+		}
+	})
+
+	t.Run("template expression", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    commands:
+      - action: shuffle
+        params:
+          enabled: '{{ shuffle }}'
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		enabled := cfg.Sets["test"].Commands[0].Params.Enabled
+		if enabled == nil || enabled.Expr != "{{ shuffle }}" || enabled.Value != false {
+			t.Errorf("expected Expr={{ shuffle }}, got %+v", enabled)
+		}
+	})
+}
+
+func TestBoolOrTemplate_UnmarshalYAML_InvalidType(t *testing.T) {
+	yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    commands:
+      - action: shuffle
+        params:
+          enabled:
+            - 1
+            - 2
+`
+	_, err := Load(writeYAML(t, yaml))
+	if err == nil {
+		t.Fatal("expected error when enabled is a YAML sequence (not bool or string)")
+	}
+}
+
+func TestBoolOrTemplate_MarshalYAML(t *testing.T) {
+	t.Run("marshals bool", func(t *testing.T) {
+		v := BoolOrTemplate{Value: true}
+		out, err := v.MarshalYAML()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if out != true {
+			t.Errorf("expected true, got %v", out)
+		}
+	})
+
+	t.Run("marshals expr as string", func(t *testing.T) {
+		v := BoolOrTemplate{Expr: "{{ shuffle }}"}
+		out, err := v.MarshalYAML()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if out != "{{ shuffle }}" {
+			t.Errorf("expected expr string, got %v", out)
+		}
+	})
+}
+
+func TestBoolOrTemplate_Resolved(t *testing.T) {
+	t.Run("resolved bool", func(t *testing.T) {
+		v := BoolOrTemplate{Value: true}
+		got, err := v.Resolved()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !got {
+			t.Error("expected true")
+		}
+	})
+
+	t.Run("unresolved expr errors", func(t *testing.T) {
+		v := BoolOrTemplate{Expr: "{{ shuffle }}"}
+		_, err := v.Resolved()
+		if err == nil {
+			t.Fatal("expected error for unresolved expr")
+		}
+		if !strings.Contains(err.Error(), "shuffle") {
+			t.Errorf("expected expr in error, got: %v", err)
+		}
+	})
+}
+
+func TestInterpolateParams_EnabledExpr(t *testing.T) {
+	p := CommandParams{Enabled: &BoolOrTemplate{Expr: "{{ shuffle }}"}}
+	got, err := p.InterpolateParams(map[string]string{"shuffle": "false"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Enabled == nil || got.Enabled.Value != false || got.Enabled.Expr != "" {
+		t.Errorf("expected resolved Value=false, got %+v", got.Enabled)
+	}
+}
+
+func TestInterpolateParams_EnabledExprNotBoolean(t *testing.T) {
+	p := CommandParams{Enabled: &BoolOrTemplate{Expr: "{{ shuffle }}"}}
+	_, err := p.InterpolateParams(map[string]string{"shuffle": "not-a-bool"})
+	if err == nil {
+		t.Fatal("expected error for non-boolean resolved value")
+	}
+}
+
+// ----- PoolEntry / SetParam unmarshal shapes ---------------------------------
+
+func TestSetParam_UnmarshalYAML(t *testing.T) {
+	t.Run("scalar string shorthand", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    params:
+      repeat: off
+    commands:
+      - action: repeat
+        params:
+          state: '{{ repeat }}'
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := cfg.Sets["test"].Params["repeat"].Default; got != "off" {
+			t.Errorf("expected Default=off, got %q", got)
+		}
+	})
+
+	t.Run("scalar bool shorthand", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    params:
+      shuffle: false
+    commands:
+      - action: shuffle
+        params:
+          enabled: '{{ shuffle }}'
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := cfg.Sets["test"].Params["shuffle"].Default; got != "false" {
+			t.Errorf("expected Default=false, got %q", got)
+		}
+	})
+
+	t.Run("scalar int shorthand", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    params:
+      volume: 40
+    commands:
+      - action: volume
+        params:
+          level: '{{ volume }}'
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := cfg.Sets["test"].Params["volume"].Default; got != "40" {
+			t.Errorf("expected Default=40, got %q", got)
+		}
+	})
+
+	t.Run("mapping form still works", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    params:
+      uri:
+        required: true
+    commands:
+      - action: play
+        params:
+          uri: '{{ uri }}'
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !cfg.Sets["test"].Params["uri"].Required {
+			t.Error("expected uri param to be required")
+		}
+	})
+
+	t.Run("empty mapping still works", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    params:
+      device: {}
+    commands:
+      - action: play
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := cfg.Sets["test"].Params["device"]; !ok {
+			t.Error("expected device param to be declared")
+		}
+	})
+
+	t.Run("pool sequence with entries", func(t *testing.T) {
+		yaml := `
+client_id: id
+client_secret: secret
+refresh_token: refresh
+sets:
+  test:
+    params:
+      pool:
+        - uri: spotify:playlist:aaa
+        - uri: spotify:playlist:bbb
+          volume: 25
+          shuffle: false
+          repeat: track
+      volume: 40
+      shuffle: true
+      repeat: off
+    commands:
+      - action: play
+        params:
+          uri: '{{ uri }}'
+`
+		cfg, err := Load(writeYAML(t, yaml))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		pool := cfg.Sets["test"].Params["pool"].Pool
+		if len(pool) != 2 {
+			t.Fatalf("expected 2 pool entries, got %d", len(pool))
+		}
+		if pool[0].URI != "spotify:playlist:aaa" || pool[0].Volume != nil || pool[0].Shuffle != nil || pool[0].Repeat != nil {
+			t.Errorf("expected plain entry with no overrides, got %+v", pool[0])
+		}
+		if pool[1].URI != "spotify:playlist:bbb" {
+			t.Errorf("expected uri=spotify:playlist:bbb, got %q", pool[1].URI)
+		}
+		if pool[1].Volume == nil || *pool[1].Volume != 25 {
+			t.Errorf("expected Volume=25, got %v", pool[1].Volume)
+		}
+		if pool[1].Shuffle == nil || *pool[1].Shuffle != false {
+			t.Errorf("expected Shuffle=false, got %v", pool[1].Shuffle)
+		}
+		if pool[1].Repeat == nil || *pool[1].Repeat != "track" {
+			t.Errorf("expected Repeat=track, got %v", pool[1].Repeat)
+		}
+	})
 }
 
 // ----- ValidRepeatStates ----------------------------------------------------

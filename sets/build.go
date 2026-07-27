@@ -97,7 +97,11 @@ func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth 
 		return &spotify.Previous{DeviceID: deviceID}, nil
 
 	case "shuffle":
-		return &spotify.Shuffle{DeviceID: deviceID, Enabled: cmd.Params.ShuffleEnabled()}, nil
+		enabled, err := cmd.Params.ShuffleEnabled()
+		if err != nil {
+			return nil, err
+		}
+		return &spotify.Shuffle{DeviceID: deviceID, Enabled: enabled}, nil
 
 	case "repeat":
 		return &spotify.Repeat{DeviceID: deviceID, State: cmd.Params.RepeatState}, nil
@@ -134,4 +138,3 @@ func buildAction(cmd config.Command, deviceID string, cfg *config.Config, depth 
 		return nil, fmt.Errorf("unknown action %q", cmd.Action)
 	}
 }
-

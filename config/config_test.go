@@ -295,68 +295,77 @@ func TestValidateMultipleMissingFields(t *testing.T) {
 	}
 }
 
-func validConfigWithParam(param SetParam) *Config {
+func validConfigWithParams(params map[string]SetParam) *Config {
 	return &Config{
 		ClientID: "id", ClientSecret: "s", RefreshToken: "r",
 		Sets: map[string]Set{
 			"speaker_sleep": {
-				Params: map[string]SetParam{"uri": param},
+				Params: params,
 			},
 		},
 	}
 }
 
 func TestValidate_PoolAndDefaultRejected(t *testing.T) {
-	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}, Default: "a"})
+	cfg := validConfigWithParams(map[string]SetParam{"pool": {Pool: []PoolEntry{{URI: "a"}, {URI: "b"}}, Default: "a"}})
 	err := cfg.validate()
 	if err == nil {
 		t.Fatal("expected validation error for pool+default")
 	}
-	if !strings.Contains(err.Error(), "speaker_sleep") || !strings.Contains(err.Error(), "uri") {
+	if !strings.Contains(err.Error(), "speaker_sleep") || !strings.Contains(err.Error(), "pool") {
 		t.Errorf("expected set/param name in error, got: %v", err)
 	}
 }
 
 func TestValidate_PoolAndRequiredRejected(t *testing.T) {
-	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}, Required: true})
+	cfg := validConfigWithParams(map[string]SetParam{"pool": {Pool: []PoolEntry{{URI: "a"}, {URI: "b"}}, Required: true}})
 	err := cfg.validate()
 	if err == nil {
 		t.Fatal("expected validation error for pool+required")
 	}
-	if !strings.Contains(err.Error(), "speaker_sleep") || !strings.Contains(err.Error(), "uri") {
+	if !strings.Contains(err.Error(), "speaker_sleep") || !strings.Contains(err.Error(), "pool") {
 		t.Errorf("expected set/param name in error, got: %v", err)
 	}
 }
 
 func TestValidate_PoolAloneIsValid(t *testing.T) {
-	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}})
+	cfg := validConfigWithParams(map[string]SetParam{"pool": {Pool: []PoolEntry{{URI: "a"}, {URI: "b"}}}})
 	if err := cfg.validate(); err != nil {
 		t.Fatalf("expected pool alone to be valid, got: %v", err)
 	}
 }
 
 func TestValidate_PoolMethodRandomIsValid(t *testing.T) {
-	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}, Method: PoolMethodRandom})
+	cfg := validConfigWithParams(map[string]SetParam{
+		"pool":   {Pool: []PoolEntry{{URI: "a"}, {URI: "b"}}},
+		"method": {Default: string(PoolMethodRandom)},
+	})
 	if err := cfg.validate(); err != nil {
 		t.Fatalf("expected pool with method random to be valid, got: %v", err)
 	}
 }
 
 func TestValidate_PoolMethodDateIsValid(t *testing.T) {
-	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}, Method: PoolMethodDate})
+	cfg := validConfigWithParams(map[string]SetParam{
+		"pool":   {Pool: []PoolEntry{{URI: "a"}, {URI: "b"}}},
+		"method": {Default: string(PoolMethodDate)},
+	})
 	if err := cfg.validate(); err != nil {
 		t.Fatalf("expected pool with method date to be valid, got: %v", err)
 	}
 }
 
 func TestValidate_PoolMethodInvalidValueRejected(t *testing.T) {
-	cfg := validConfigWithParam(SetParam{Pool: []string{"a", "b"}, Method: "bogus"})
+	cfg := validConfigWithParams(map[string]SetParam{
+		"pool":   {Pool: []PoolEntry{{URI: "a"}, {URI: "b"}}},
+		"method": {Default: "bogus"},
+	})
 	err := cfg.validate()
 	if err == nil {
 		t.Fatal("expected validation error for invalid method value")
 	}
 	msg := err.Error()
-	for _, want := range []string{"speaker_sleep", "uri", "method", "random", "date"} {
+	for _, want := range []string{"speaker_sleep", "method", "random", "date"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("expected %q in error, got: %v", want, msg)
 		}
@@ -364,7 +373,7 @@ func TestValidate_PoolMethodInvalidValueRejected(t *testing.T) {
 }
 
 func TestValidate_MethodWithoutPoolRejected(t *testing.T) {
-	cfg := validConfigWithParam(SetParam{Default: "a", Method: PoolMethodRandom})
+	cfg := validConfigWithParams(map[string]SetParam{"method": {Default: string(PoolMethodRandom)}})
 	err := cfg.validate()
 	if err == nil {
 		t.Fatal("expected validation error for method without pool")
@@ -374,3 +383,95 @@ func TestValidate_MethodWithoutPoolRejected(t *testing.T) {
 	}
 }
 
+func TestValidate_PoolAndURIBothDeclaredRejected(t *testing.T) {
+	cfg := validConfigWithParams(map[string]SetParam{
+		"pool": {Pool: []PoolEntry{{URI: "a"}}},
+		"uri":  {Required: true},
+	})
+	err := cfg.validate()
+	if err == nil {
+		t.Fatal("expected validation error for pool+uri both declared")
+	}
+	if !strings.Contains(err.Error(), "speaker_sleep") {
+		t.Errorf("expected set name in error, got: %v", err)
+	}
+}
+
+func TestValidate_PoolEntryVolumeWithoutVolumeParamRejected(t *testing.T) {
+	vol := 50
+	cfg := validConfigWithParams(map[string]SetParam{
+		"pool": {Pool: []PoolEntry{{URI: "a", Volume: &vol}}},
+	})
+	err := cfg.validate()
+	if err == nil {
+		t.Fatal("expected validation error for pool entry volume override without a declared volume param")
+	}
+	if !strings.Contains(err.Error(), "volume") {
+		t.Errorf("expected \"volume\" in error, got: %v", err)
+	}
+}
+
+func TestValidate_PoolEntryVolumeWithVolumeParamIsValid(t *testing.T) {
+	vol := 50
+	cfg := validConfigWithParams(map[string]SetParam{
+		"pool":   {Pool: []PoolEntry{{URI: "a", Volume: &vol}}},
+		"volume": {Default: "40"},
+	})
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("expected pool entry volume override with declared volume param to be valid, got: %v", err)
+	}
+}
+
+func TestValidate_PoolEntryShuffleWithoutShuffleParamRejected(t *testing.T) {
+	shuffle := false
+	cfg := validConfigWithParams(map[string]SetParam{
+		"pool": {Pool: []PoolEntry{{URI: "a", Shuffle: &shuffle}}},
+	})
+	err := cfg.validate()
+	if err == nil {
+		t.Fatal("expected validation error for pool entry shuffle override without a declared shuffle param")
+	}
+	if !strings.Contains(err.Error(), "shuffle") {
+		t.Errorf("expected \"shuffle\" in error, got: %v", err)
+	}
+}
+
+func TestValidate_PoolEntryRepeatWithoutRepeatParamRejected(t *testing.T) {
+	repeat := "track"
+	cfg := validConfigWithParams(map[string]SetParam{
+		"pool": {Pool: []PoolEntry{{URI: "a", Repeat: &repeat}}},
+	})
+	err := cfg.validate()
+	if err == nil {
+		t.Fatal("expected validation error for pool entry repeat override without a declared repeat param")
+	}
+	if !strings.Contains(err.Error(), "repeat") {
+		t.Errorf("expected \"repeat\" in error, got: %v", err)
+	}
+}
+
+func TestValidate_PoolEntryInvalidRepeatValueRejected(t *testing.T) {
+	repeat := "bogus"
+	cfg := validConfigWithParams(map[string]SetParam{
+		"pool":   {Pool: []PoolEntry{{URI: "a", Repeat: &repeat}}},
+		"repeat": {Default: "off"},
+	})
+	err := cfg.validate()
+	if err == nil {
+		t.Fatal("expected validation error for invalid pool entry repeat value")
+	}
+	if !strings.Contains(err.Error(), "bogus") {
+		t.Errorf("expected \"bogus\" in error, got: %v", err)
+	}
+}
+
+func TestValidate_PoolFieldOnNonPoolKeyRejected(t *testing.T) {
+	cfg := validConfigWithParams(map[string]SetParam{"uri": {Pool: []PoolEntry{{URI: "a"}}}})
+	err := cfg.validate()
+	if err == nil {
+		t.Fatal("expected validation error for pool entries under a non-\"pool\" key")
+	}
+	if !strings.Contains(err.Error(), "uri") {
+		t.Errorf("expected param name in error, got: %v", err)
+	}
+}
