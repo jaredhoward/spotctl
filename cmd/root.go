@@ -9,12 +9,28 @@ import (
 	"syscall"
 
 	"github.com/jaredhoward/spotctl/config"
+	"github.com/jaredhoward/spotctl/sets"
 	"github.com/jaredhoward/spotctl/spotify"
 	"github.com/spf13/cobra"
 )
 
 var configPath string
 var appVersion = "dev"
+
+// verbose enables poll/confirm/retry and raw HTTP debug logging across every
+// command. Bound to the global --verbose/-v flag; applyVerbose propagates it
+// to the sets and spotify packages. Set is CLI-only — it's a debugging aid,
+// not persisted configuration.
+var verbose bool
+
+// applyVerbose propagates the verbose flag to the packages that use it.
+// Called from PersistentPreRunE for normally-parsed commands, and directly
+// from runCmd (see cmd/sets.go) since it disables cobra's flag parsing and
+// so bypasses PersistentPreRunE's usual timing.
+func applyVerbose() {
+	sets.Verbose = verbose
+	spotify.Verbose = verbose
+}
 
 type clientFactory func(accessToken string) *spotify.Client
 
@@ -28,6 +44,9 @@ var rootCmd = &cobra.Command{
 	Use:          "spotctl",
 	Short:        "Spotify Connect controller",
 	SilenceUsage: true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		applyVerbose()
+	},
 }
 
 var versionCmd = &cobra.Command{
@@ -119,5 +138,6 @@ func newClientFromCfg(ctx context.Context, cfg *config.Config) (*spotify.Client,
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", config.DefaultConfigPath, "path to config file")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable debug logging: confirm/poll/retry detail and raw HTTP tracing (never logs credentials)")
 	rootCmd.AddCommand(versionCmd)
 }

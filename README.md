@@ -382,6 +382,7 @@ sets:
 | Flag | Default | Description |
 |---|---|---|
 | `--config` | `./config.yaml` | Path to config file |
+| `--verbose`, `-v` | `false` | Debug logging: dispatch/poll/confirm detail plus raw Spotify HTTP request/response tracing to stderr. Never logs credentials (access tokens, refresh tokens) — the OAuth token exchange is excluded entirely. Works on every command, including `run`. |
 
 ### `sets`
 

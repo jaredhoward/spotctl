@@ -4,13 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+// captureStderr runs fn with os.Stderr redirected and returns what it wrote.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	fn()
+	w.Close()
+	out, err := io.ReadAll(r)
+	os.Stderr = old
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
 
 func TestDoExpectSuccess_NonTwoXX_IncludesBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -150,6 +171,80 @@ func TestPlayerURL_WithAndWithoutDevice(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("playerURL(%q, %q, %q) = %q, want %q", tc.base, tc.path, tc.deviceID, got, tc.want)
 		}
+	}
+}
+
+func TestDoRequest_VerboseLogsAndPreservesBody(t *testing.T) {
+	old := Verbose
+	Verbose = true
+	defer func() { Verbose = old }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"is_playing":true}`))
+	}))
+	defer server.Close()
+
+	client := &Client{accessToken: "secret-token", httpClient: server.Client(), urlPlayer: server.URL}
+
+	var state *PlaybackState
+	var err error
+	logs := captureStderr(t, func() {
+		state, err = client.GetCurrentPlayback(context.Background())
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if state == nil || !state.IsPlaying {
+		t.Fatalf("expected body to still be readable after verbose logging, got %+v", state)
+	}
+	if !strings.Contains(logs, "[http]") {
+		t.Errorf("expected verbose HTTP trace, got: %q", logs)
+	}
+	if strings.Contains(logs, "secret-token") {
+		t.Errorf("verbose logging must never include the access token, got: %q", logs)
+	}
+}
+
+func TestDoRequest_VerboseLogsRequestBody(t *testing.T) {
+	old := Verbose
+	Verbose = true
+	defer func() { Verbose = old }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
+	p := &Play{ContextURI: "spotify:playlist:abc"}
+
+	logs := captureStderr(t, func() {
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	if !strings.Contains(logs, "spotify:playlist:abc") {
+		t.Errorf("expected request body in verbose trace, got: %q", logs)
+	}
+}
+
+func TestDoRequest_VerboseLogsTransportError(t *testing.T) {
+	old := Verbose
+	Verbose = true
+	defer func() { Verbose = old }()
+
+	client := &Client{accessToken: "t", httpClient: &http.Client{Timeout: time.Millisecond}, urlPlayer: "http://127.0.0.1:1"}
+
+	var err error
+	logs := captureStderr(t, func() {
+		_, err = client.GetCurrentPlayback(context.Background())
+	})
+	if err == nil {
+		t.Fatal("expected error from unreachable server")
+	}
+	if !strings.Contains(logs, "[http]") {
+		t.Errorf("expected verbose error trace, got: %q", logs)
 	}
 }
 

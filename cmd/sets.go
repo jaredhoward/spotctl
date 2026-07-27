@@ -77,7 +77,10 @@ Run 'spotctl sets' to see declared params for each set.`,
 			return fmt.Errorf("requires a set name argument")
 		}
 
-		// First pass: strip --config <path> from args and update configPath.
+		// First pass: strip --config <path> and --verbose/-v from args and
+		// update configPath/verbose. --verbose must be applied here (rather
+		// than relying on PersistentPreRun) since DisableFlagParsing means
+		// cobra never parses it out on its own for this command.
 		remaining := make([]string, 0, len(args))
 		for i := 0; i < len(args); i++ {
 			switch {
@@ -92,10 +95,13 @@ Run 'spotctl sets' to see declared params for each set.`,
 					return fmt.Errorf("--config requires a non-empty path")
 				}
 				configPath = args[i][9:]
+			case args[i] == "--verbose" || args[i] == "-v":
+				verbose = true
 			default:
 				remaining = append(remaining, args[i])
 			}
 		}
+		applyVerbose()
 
 		if len(remaining) == 0 {
 			return fmt.Errorf("requires a set name argument")

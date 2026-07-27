@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,25 @@ import (
 	sets "github.com/jaredhoward/spotctl/sets"
 	"github.com/jaredhoward/spotctl/spotify"
 )
+
+// captureStderr runs fn with os.Stderr redirected and returns what it wrote.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	fn()
+	w.Close()
+	out, err := io.ReadAll(r)
+	os.Stderr = old
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
 
 // ---- test helpers -----------------------------------------------------------
 
@@ -648,6 +668,66 @@ func TestExecute_ConfirmPollError(t *testing.T) {
 	}
 	if pollCount < 3 {
 		t.Errorf("expected at least 3 polls, got %d", pollCount)
+	}
+}
+
+// ---- Execute: verbose logging ------------------------------------------------
+
+func TestExecute_VerboseLogsDispatchAndPoll(t *testing.T) {
+	old := sets.Verbose
+	sets.Verbose = true
+	defer func() { sets.Verbose = old }()
+
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			w.Write(stateBody(spotify.PlaybackState{IsPlaying: true, Device: spotify.Device{ID: "d1", Name: "Speaker"}}))
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{DeviceID: "d1"}
+	var err error
+	logs := captureStderr(t, func() {
+		err = sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+			Confirm:      true,
+			PollInterval: 5 * time.Millisecond,
+		})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"dispatch:", "poll:", "confirmed=true"} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("expected verbose log to contain %q, got: %q", want, logs)
+		}
+	}
+}
+
+func TestExecute_NotVerboseLogsNothing(t *testing.T) {
+	old := sets.Verbose
+	sets.Verbose = false
+	defer func() { sets.Verbose = old }()
+
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			w.Write(stateBody(spotify.PlaybackState{IsPlaying: true, Device: spotify.Device{ID: "d1"}}))
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{DeviceID: "d1"}
+	logs := captureStderr(t, func() {
+		if err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+			Confirm:      true,
+			PollInterval: 5 * time.Millisecond,
+		}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	if logs != "" {
+		t.Errorf("expected no output when Verbose is false, got: %q", logs)
 	}
 }
 
