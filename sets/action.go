@@ -18,12 +18,17 @@ const (
 // --verbose flag. It is a runtime debugging aid, not persisted configuration.
 var Verbose bool
 
+// timestampFormat gives verbose log lines millisecond-precision timestamps
+// so elapsed time between lines (e.g. dispatch to confirm) can be read
+// directly off --verbose output instead of measured separately.
+const timestampFormat = "2006-01-02 15:04:05.000"
+
 // logVerbose writes a debug line to stderr when Verbose is enabled.
 func logVerbose(format string, args ...any) {
 	if !Verbose {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "[verbose] "+format+"\n", args...)
+	fmt.Fprintf(os.Stderr, "[%s] [verbose] "+format+"\n", append([]any{time.Now().Format(timestampFormat)}, args...)...)
 }
 
 // describeState renders a concise summary of a playback state for verbose

@@ -78,6 +78,17 @@ func playerURL(base, path, deviceID string, extra ...url.Values) string {
 	return u + "?" + params.Encode()
 }
 
+// httpTimestampFormat gives verbose HTTP trace lines millisecond-precision
+// timestamps so elapsed time between requests (e.g. play to confirm) can be
+// read directly off --verbose output instead of measured separately.
+const httpTimestampFormat = "2006-01-02 15:04:05.000"
+
+// logHTTP writes a debug line to stderr, prefixed with the current time.
+// Callers only invoke this when Verbose is already true.
+func logHTTP(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "[%s] "+format+"\n", append([]any{time.Now().Format(httpTimestampFormat)}, args...)...)
+}
+
 // doRequest sends req via the client's HTTP client. When Verbose is enabled
 // it logs the request method/URL/body and the response status/body to
 // stderr; the Authorization header is never logged. The response body is
@@ -85,11 +96,11 @@ func playerURL(base, path, deviceID string, extra ...url.Values) string {
 // it normally.
 func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
 	if Verbose {
-		fmt.Fprintf(os.Stderr, "[http] -> %s %s\n", req.Method, req.URL.String())
+		logHTTP("[http] -> %s %s", req.Method, req.URL.String())
 		if req.GetBody != nil {
 			if rc, err := req.GetBody(); err == nil {
 				if body, err := io.ReadAll(rc); err == nil && len(body) > 0 {
-					fmt.Fprintf(os.Stderr, "[http]    body: %s\n", body)
+					logHTTP("[http]    body: %s", body)
 				}
 			}
 		}
@@ -98,7 +109,7 @@ func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		if Verbose {
-			fmt.Fprintf(os.Stderr, "[http] <- %s %s: error: %v\n", req.Method, req.URL.Path, err)
+			logHTTP("[http] <- %s %s: error: %v", req.Method, req.URL.Path, err)
 		}
 		return resp, err
 	}
@@ -107,9 +118,9 @@ func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(body))
-		fmt.Fprintf(os.Stderr, "[http] <- %d %s %s\n", resp.StatusCode, req.Method, req.URL.Path)
+		logHTTP("[http] <- %d %s %s", resp.StatusCode, req.Method, req.URL.Path)
 		if len(body) > 0 {
-			fmt.Fprintf(os.Stderr, "[http]    body: %s\n", body)
+			logHTTP("[http]    body: %s", body)
 		}
 	}
 
