@@ -19,8 +19,11 @@ const DefaultPlaybackPollInterval = 500 * time.Millisecond
 // to make sure it holds before Execute declares success (see
 // sets.Execute). Some Spotify Connect devices — notably ones waking from an
 // idle state — report a successful transition and then silently drop a
-// moment later; this window is what catches that.
-const DefaultConfirmStabilizeWindow = 2 * time.Second
+// moment later; this window is what catches that. 4s was chosen empirically:
+// live testing against a WiiM/LinkPlay device reproduced a silent session
+// reset landing ~2.07s after confirmation, so the window needs real margin
+// past that to reliably catch it.
+const DefaultConfirmStabilizeWindow = 4 * time.Second
 
 type Config struct {
 	ClientID               string            `yaml:"client_id"`

@@ -62,10 +62,10 @@ An optional `playback_poll_interval` field controls how often `spotctl` polls Sp
 playback_poll_interval: 500ms
 ```
 
-An optional `confirm_stabilize_window` field controls how long a first confirmation is re-checked before `spotctl` trusts it (default: `2s`). This exists because some Spotify Connect devices — notably ones waking from an idle state — report a successful play/transfer and then silently drop a moment later; `spotctl` re-dispatches once if that happens within the window before giving up:
+An optional `confirm_stabilize_window` field controls how long a first confirmation is re-checked before `spotctl` trusts it (default: `4s`). This exists because some Spotify Connect devices — notably ones waking from an idle state — report a successful play/transfer and then silently drop a moment later; `spotctl` re-dispatches once if that happens within the window before giving up. This applies uniformly to direct commands (`play`, `pause`, etc.) and to `run <set>`:
 
 ```yaml
-confirm_stabilize_window: 2s
+confirm_stabilize_window: 4s
 ```
 
 ### 2. Discover and persist device IDs

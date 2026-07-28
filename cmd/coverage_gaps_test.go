@@ -99,7 +99,7 @@ func TestPlayCmdRunE_WithAlbum(t *testing.T) {
 		t.Fatal(err)
 	}
 	albumID = "al123"
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms"})
 
 	var gotBody string
 	postState, _ := json.Marshal(spotify.PlaybackState{
@@ -147,7 +147,7 @@ func TestPlayCmdRunE_WithTrack(t *testing.T) {
 		t.Fatal(err)
 	}
 	trackID = "tr456"
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms"})
 
 	var gotBody string
 	postState, _ := json.Marshal(spotify.PlaybackState{

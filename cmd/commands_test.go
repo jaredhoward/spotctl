@@ -57,7 +57,7 @@ func TestPlayCmdRunE_NoDevice(t *testing.T) {
 	}()
 
 	playDeviceID = ""
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms"})
 	resetPlayCmdFlags(t)
 
 	playCalled := false
@@ -105,7 +105,7 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 	}()
 
 	playDeviceID = "device-1"
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms"})
 	resetPlayCmdFlags(t)
 
 	playCalled := false
@@ -176,7 +176,7 @@ func TestTransferCmdRunE_Success(t *testing.T) {
 
 	transferDeviceID = "device-1"
 	transferPlay = true
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms"})
 
 	transferCalled := false
 	postState, _ := json.Marshal(spotify.PlaybackState{
@@ -257,7 +257,7 @@ func TestVolumeCmdRunE_Success(t *testing.T) {
 	if err := volumeCmd.Flags().Set("level", "42"); err != nil {
 		t.Fatal(err)
 	}
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms"})
 
 	volumeCalled := false
 	postState, _ := json.Marshal(spotify.PlaybackState{
