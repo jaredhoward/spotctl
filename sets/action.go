@@ -186,17 +186,21 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 }
 
 // pollUntilConfirmed polls Spotify playback state at pollInterval until a is
-// confirmed or deadline passes. Returns the confirming state on success, or
-// (nil, nil) on a plain deadline expiry. (nil, err) is returned only for
-// context cancellation or too many consecutive GetCurrentPlayback failures.
+// confirmed or deadline passes. It waits pollInterval before every check,
+// including the first — checking immediately after dispatch is pointless,
+// since Spotify's own backend needs a moment to reflect a change that was
+// just requested. Returns the confirming state on success, or (nil, nil) on
+// a plain deadline expiry. (nil, err) is returned only for context
+// cancellation or too many consecutive GetCurrentPlayback failures.
 func pollUntilConfirmed(ctx context.Context, a spotify.Action, c *spotify.Client, deadline time.Time, pollInterval time.Duration) (*spotify.PlaybackState, error) {
 	const maxConsecutiveErrors = 5
 	consecutiveErrors := 0
-	for time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
+	for {
+		if err := sleepOrDone(ctx, pollInterval); err != nil {
+			return nil, err
+		}
+		if !time.Now().Before(deadline) {
+			return nil, nil
 		}
 		state, err := c.GetCurrentPlayback(ctx)
 		if err != nil {
@@ -204,9 +208,6 @@ func pollUntilConfirmed(ctx context.Context, a spotify.Action, c *spotify.Client
 			logVerbose("poll: GetCurrentPlayback failed (%d/%d consecutive): %v", consecutiveErrors, maxConsecutiveErrors, err)
 			if consecutiveErrors >= maxConsecutiveErrors {
 				return nil, fmt.Errorf("polling aborted after %d consecutive errors: %w", consecutiveErrors, err)
-			}
-			if err := sleepOrDone(ctx, pollInterval); err != nil {
-				return nil, err
 			}
 			continue
 		}
@@ -216,11 +217,7 @@ func pollUntilConfirmed(ctx context.Context, a spotify.Action, c *spotify.Client
 		if confirmed {
 			return state, nil
 		}
-		if err := sleepOrDone(ctx, pollInterval); err != nil {
-			return nil, err
-		}
 	}
-	return nil, nil
 }
 
 // staysConfirmed re-polls for window (bounded by deadline) after an initial

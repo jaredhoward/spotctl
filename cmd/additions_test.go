@@ -170,7 +170,7 @@ func TestShuffleCmd_Enabled(t *testing.T) {
 
 	shuffleDeviceID = "dev-1"
 	shuffleEnabled = true
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 
 	var gotState string
 	postState, _ := json.Marshal(spotify.PlaybackState{
@@ -219,7 +219,7 @@ func TestShuffleCmd_Disabled(t *testing.T) {
 
 	shuffleDeviceID = ""
 	shuffleEnabled = false
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 
 	var gotState string
 	postState, _ := json.Marshal(spotify.PlaybackState{
@@ -281,7 +281,7 @@ func TestRepeatCmd_Off(t *testing.T) {
 
 	repeatDeviceID = "dev-1"
 	repeatState = "off"
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 
 	var gotState, gotDevice string
 	postState, _ := json.Marshal(spotify.PlaybackState{
@@ -331,7 +331,7 @@ func TestRepeatCmd_Context_NoDevice(t *testing.T) {
 
 	repeatDeviceID = ""
 	repeatState = "context"
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 
 	var gotState, gotDevice string
 	postState, _ := json.Marshal(spotify.PlaybackState{

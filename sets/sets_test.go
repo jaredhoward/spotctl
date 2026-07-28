@@ -62,10 +62,11 @@ func newClient(t *testing.T, srv *httptest.Server) *spotify.Client {
 func newCfg(s map[string]config.Set) *config.Config {
 	return &config.Config{
 		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
-		// Fast stabilize window so tests exercising a successful confirm
-		// don't pay the real-world 2s default; TestBuild_StabilizeWindow*
-		// cover the config wiring itself.
+		// Fast stabilize window and poll interval so tests exercising a
+		// successful confirm don't pay the real-world defaults;
+		// TestBuild_StabilizeWindow* cover the config wiring itself.
 		ConfirmStabilizeWindow: "5ms",
+		PlaybackPollInterval:   "5ms",
 		Sets:                   s,
 	}
 }
