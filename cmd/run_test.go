@@ -157,6 +157,7 @@ func TestRunCmd_Success(t *testing.T) {
 
 	cfg := &config.Config{
 		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
+		ConfirmStabilizeWindow: "5ms",
 		Sets: map[string]config.Set{
 			"mySet": {Commands: []config.Command{
 				{Action: "pause"},
@@ -191,6 +192,7 @@ func TestRunCmd_DeviceFlagOverridesTemplatedDeviceID(t *testing.T) {
 
 	cfg := &config.Config{
 		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
+		ConfirmStabilizeWindow: "5ms",
 		Sets: map[string]config.Set{
 			"mySet": {
 				DeviceID: "{{ device }}",

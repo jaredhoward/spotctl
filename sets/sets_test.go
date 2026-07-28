@@ -62,7 +62,11 @@ func newClient(t *testing.T, srv *httptest.Server) *spotify.Client {
 func newCfg(s map[string]config.Set) *config.Config {
 	return &config.Config{
 		ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh",
-		Sets: s,
+		// Fast stabilize window so tests exercising a successful confirm
+		// don't pay the real-world 2s default; TestBuild_StabilizeWindow*
+		// cover the config wiring itself.
+		ConfirmStabilizeWindow: "5ms",
+		Sets:                   s,
 	}
 }
 
@@ -659,9 +663,10 @@ func TestExecute_ConfirmPollError(t *testing.T) {
 
 	a := &spotify.Play{DeviceID: "d1"}
 	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
-		Confirm:      true,
-		Timeout:      5 * time.Second,
-		PollInterval: 10 * time.Millisecond,
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    10 * time.Millisecond,
+		StabilizeWindow: 10 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("expected success after transient poll errors, got %v", err)
@@ -671,9 +676,358 @@ func TestExecute_ConfirmPollError(t *testing.T) {
 	}
 }
 
+// ---- Execute: stabilize window + retry on drop -------------------------------
+
+func TestExecute_StabilizeWindow_DropThenRetryRecovers(t *testing.T) {
+	const uri = "spotify:playlist:abc"
+	confirmedState := stateBody(spotify.PlaybackState{IsPlaying: true, Context: &spotify.PlaybackContext{URI: uri}})
+	droppedState := stateBody(spotify.PlaybackState{IsPlaying: false})
+
+	var putCount int
+	var confirmedOnce bool
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			confirmedOnce = false
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			if !confirmedOnce {
+				confirmedOnce = true
+				w.Write(confirmedState)
+				return
+			}
+			if putCount >= 2 {
+				// Second dispatch attempt holds steady.
+				w.Write(confirmedState)
+				return
+			}
+			// First dispatch attempt confirms once, then drops.
+			w.Write(droppedState)
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: uri}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("expected eventual success after retry, got %v", err)
+	}
+	if putCount != 2 {
+		t.Errorf("expected exactly 2 dispatch attempts (initial + 1 retry), got %d", putCount)
+	}
+}
+
+func TestExecute_StabilizeWindow_ExhaustsRetries(t *testing.T) {
+	const uri = "spotify:playlist:abc"
+	confirmedState := stateBody(spotify.PlaybackState{IsPlaying: true, Context: &spotify.PlaybackContext{URI: uri}})
+	droppedState := stateBody(spotify.PlaybackState{IsPlaying: false})
+
+	var putCount int
+	var confirmedOnce bool
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			confirmedOnce = false
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			if !confirmedOnce {
+				confirmedOnce = true
+				w.Write(confirmedState)
+				return
+			}
+			// Every attempt confirms once, then drops — it never holds.
+			w.Write(droppedState)
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: uri}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 20 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("expected error after exhausting retries")
+	}
+	var te *sets.TimeoutError
+	if !errors.As(err, &te) {
+		t.Fatalf("expected a TimeoutError, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "confirmed but did not hold") {
+		t.Errorf("expected error to explain the drop, got %q", err.Error())
+	}
+	if putCount != 2 {
+		t.Errorf("expected exactly 2 dispatch attempts (initial + 1 retry), got %d", putCount)
+	}
+}
+
+// ---- Execute: silent session-reset detection ---------------------------------
+
+func TestExecute_SessionReset_DropThenRetryRecovers(t *testing.T) {
+	const uri = "spotify:playlist:abc"
+	confirmedState := func(progressMS int) []byte {
+		return stateBody(spotify.PlaybackState{
+			IsPlaying:  true,
+			Context:    &spotify.PlaybackContext{URI: uri},
+			Item:       &spotify.Track{URI: "spotify:track:same"},
+			ProgressMS: progressMS,
+		})
+	}
+
+	var putCount int
+	var pollCount int
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			pollCount = 0
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			pollCount++
+			if putCount >= 2 {
+				// Second dispatch attempt: progress only ever advances.
+				w.Write(confirmedState(500 + pollCount*100))
+				return
+			}
+			// First dispatch attempt: confirms, holds one tick, then the
+			// same track's progress regresses far past tolerance — a
+			// silent session reset, not is_playing flipping false.
+			if pollCount <= 2 {
+				w.Write(confirmedState(2000))
+				return
+			}
+			w.Write(confirmedState(200))
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: uri}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 30 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("expected eventual success after retry, got %v", err)
+	}
+	if putCount != 2 {
+		t.Errorf("expected exactly 2 dispatch attempts (initial + 1 retry), got %d", putCount)
+	}
+}
+
+func TestExecute_SessionReset_ExhaustsRetries(t *testing.T) {
+	const uri = "spotify:playlist:abc"
+	confirmedState := func(progressMS int) []byte {
+		return stateBody(spotify.PlaybackState{
+			IsPlaying:  true,
+			Context:    &spotify.PlaybackContext{URI: uri},
+			Item:       &spotify.Track{URI: "spotify:track:same"},
+			ProgressMS: progressMS,
+		})
+	}
+
+	var putCount int
+	var pollCount int
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			pollCount = 0
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			pollCount++
+			// Every attempt confirms, holds one tick, then regresses — it
+			// never actually stabilizes.
+			if pollCount <= 2 {
+				w.Write(confirmedState(2000))
+				return
+			}
+			w.Write(confirmedState(200))
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: uri}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 30 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("expected error after exhausting retries")
+	}
+	var te *sets.TimeoutError
+	if !errors.As(err, &te) {
+		t.Fatalf("expected a TimeoutError, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "confirmed but did not hold") {
+		t.Errorf("expected error to explain the drop, got %q", err.Error())
+	}
+	if putCount != 2 {
+		t.Errorf("expected exactly 2 dispatch attempts (initial + 1 retry), got %d", putCount)
+	}
+}
+
+func TestExecute_SessionReset_WithinToleranceIsNotADrop(t *testing.T) {
+	const uri = "spotify:playlist:abc"
+	// Progress only ever dips by small jitter (well under the 1000ms
+	// tolerance) between ticks — never a real regression.
+	progressions := []int{1000, 950, 1050, 900, 1100}
+
+	var putCount int
+	var pollCount int
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			idx := pollCount
+			if idx >= len(progressions) {
+				idx = len(progressions) - 1
+			}
+			progress := progressions[idx]
+			pollCount++
+			w.Write(stateBody(spotify.PlaybackState{
+				IsPlaying:  true,
+				Context:    &spotify.PlaybackContext{URI: uri},
+				Item:       &spotify.Track{URI: "spotify:track:same"},
+				ProgressMS: progress,
+			}))
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: uri}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 30 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("expected small jitter to be tolerated, got %v", err)
+	}
+	if putCount != 1 {
+		t.Errorf("expected exactly 1 dispatch attempt (no false-positive retry), got %d", putCount)
+	}
+}
+
+func TestExecute_SessionReset_LegitimateTrackChangeIsNotADrop(t *testing.T) {
+	const uri = "spotify:playlist:abc"
+	var putCount int
+	var pollCount int
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			pollCount++
+			if pollCount <= 2 {
+				// First track, progress advancing normally.
+				w.Write(stateBody(spotify.PlaybackState{
+					IsPlaying:  true,
+					Context:    &spotify.PlaybackContext{URI: uri},
+					Item:       &spotify.Track{URI: "spotify:track:first"},
+					ProgressMS: 2000 + pollCount*100,
+				}))
+				return
+			}
+			// Playlist naturally advanced to the next track — a different
+			// Item.URI with much lower progress. Not a session reset.
+			w.Write(stateBody(spotify.PlaybackState{
+				IsPlaying:  true,
+				Context:    &spotify.PlaybackContext{URI: uri},
+				Item:       &spotify.Track{URI: "spotify:track:second"},
+				ProgressMS: 300,
+			}))
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: uri}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 30 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("expected a legitimate track change to be tolerated, got %v", err)
+	}
+	if putCount != 1 {
+		t.Errorf("expected exactly 1 dispatch attempt (track change isn't a drop), got %d", putCount)
+	}
+}
+
+func TestExecute_SessionReset_OnFirstStabilizeTick(t *testing.T) {
+	const uri = "spotify:playlist:abc"
+	confirmedState := func(progressMS int) []byte {
+		return stateBody(spotify.PlaybackState{
+			IsPlaying:  true,
+			Context:    &spotify.PlaybackContext{URI: uri},
+			Item:       &spotify.Track{URI: "spotify:track:same"},
+			ProgressMS: progressMS,
+		})
+	}
+
+	var putCount int
+	var pollCount int
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			pollCount = 0
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			pollCount++
+			if putCount >= 2 {
+				w.Write(confirmedState(500 + pollCount*100))
+				return
+			}
+			if pollCount == 1 {
+				// Confirms at a high progress value...
+				w.Write(confirmedState(3000))
+				return
+			}
+			// ...and the very first stabilize tick already shows the
+			// regression — exercises the seed comparison, not just
+			// tick-to-tick within staysConfirmed.
+			w.Write(confirmedState(200))
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: uri}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 30 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("expected eventual success after retry, got %v", err)
+	}
+	if putCount != 2 {
+		t.Errorf("expected exactly 2 dispatch attempts (initial + 1 retry), got %d", putCount)
+	}
+}
+
 // ---- Execute: verbose logging ------------------------------------------------
 
-func TestExecute_VerboseLogsDispatchAndPoll(t *testing.T) {
+func TestExecute_VerboseLogsPollAndStabilizeDetail(t *testing.T) {
 	old := sets.Verbose
 	sets.Verbose = true
 	defer func() { sets.Verbose = old }()
@@ -690,14 +1044,15 @@ func TestExecute_VerboseLogsDispatchAndPoll(t *testing.T) {
 	var err error
 	logs := captureStderr(t, func() {
 		err = sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
-			Confirm:      true,
-			PollInterval: 5 * time.Millisecond,
+			Confirm:         true,
+			PollInterval:    5 * time.Millisecond,
+			StabilizeWindow: 10 * time.Millisecond,
 		})
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"dispatch:", "poll:", "confirmed=true"} {
+	for _, want := range []string{"dispatch attempt", "poll:", "stabilize:", "held stable"} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("expected verbose log to contain %q, got: %q", want, logs)
 		}
@@ -720,8 +1075,9 @@ func TestExecute_NotVerboseLogsNothing(t *testing.T) {
 	a := &spotify.Play{DeviceID: "d1"}
 	logs := captureStderr(t, func() {
 		if err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
-			Confirm:      true,
-			PollInterval: 5 * time.Millisecond,
+			Confirm:         true,
+			PollInterval:    5 * time.Millisecond,
+			StabilizeWindow: 10 * time.Millisecond,
 		}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

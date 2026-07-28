@@ -214,15 +214,23 @@ func runVolume(cmd *cobra.Command, args []string) error {
 
 // ---- helper -----------------------------------------------------------------
 
+// confirmStabilizeWindow is how long dispatchAndPrintStatus re-checks a
+// confirmed command before trusting it, out of its 5s total budget. A
+// package var (rather than a literal) so tests can shrink it. See
+// sets.Execute for why this exists — some Spotify Connect devices confirm
+// optimistically and then drop a moment later.
+var confirmStabilizeWindow = 1 * time.Second
+
 // dispatchAndPrintStatus dispatches a with confirmation polling (5s timeout),
 // then fetches and prints the current playback status. A confirmation timeout
 // is treated as a soft outcome — status is still printed so the user can see
 // what the player is actually doing.
 func dispatchAndPrintStatus(ctx context.Context, a spotify.Action, client *spotify.Client, errPrefix string) error {
 	opts := sets.ExecuteOptions{
-		Confirm:      true,
-		Timeout:      5 * time.Second,
-		PollInterval: 500 * time.Millisecond,
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    500 * time.Millisecond,
+		StabilizeWindow: confirmStabilizeWindow,
 	}
 	if err := sets.Execute(ctx, a, client, opts); err != nil {
 		var te *sets.TimeoutError

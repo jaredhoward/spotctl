@@ -62,6 +62,12 @@ An optional `playback_poll_interval` field controls how often `spotctl` polls Sp
 playback_poll_interval: 500ms
 ```
 
+An optional `confirm_stabilize_window` field controls how long a first confirmation is re-checked before `spotctl` trusts it (default: `2s`). This exists because some Spotify Connect devices — notably ones waking from an idle state — report a successful play/transfer and then silently drop a moment later; `spotctl` re-dispatches once if that happens within the window before giving up:
+
+```yaml
+confirm_stabilize_window: 2s
+```
+
 ### 2. Discover and persist device IDs
 
 Before configuring sets, find the device IDs of your Spotify Connect devices:
@@ -191,7 +197,7 @@ Each command in a set has:
 | `name` | — | Optional label for this command. Used in log output and `spotctl sets` listings. |
 | `device_id` | — | Spotify device ID for this command. Overrides the set-level `device_id`. Omit to target the active device. Also accepts a `{{ name }}` placeholder, same as the set-level field. |
 | `params` | — | Action-specific parameters (see below) |
-| `confirm` | set-level or `true` | Poll Spotify state until the action is reflected before continuing. Set to `false` to fire-and-forget. |
+| `confirm` | set-level or `true` | Poll Spotify state until the action is reflected, then keep re-checking for `confirm_stabilize_window` to make sure it holds (re-dispatching once if it drops) before continuing. Set to `false` to fire-and-forget. |
 | `timeout` | set-level or `15s` | Overall deadline for the command including confirmation polling |
 | `on_error` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
 | `on_timeout` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |

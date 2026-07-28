@@ -65,9 +65,10 @@ func Build(name string, set config.Set, cfg *config.Config, depth int, args map[
 			label:  label,
 			action: a,
 			opts: ExecuteOptions{
-				Confirm:      cmd.EffectiveConfirm(set.Confirm),
-				Timeout:      timeout,
-				PollInterval: pollInterval,
+				Confirm:         cmd.EffectiveConfirm(set.Confirm),
+				Timeout:         timeout,
+				PollInterval:    pollInterval,
+				StabilizeWindow: cfg.ConfirmStabilizeWindowDuration(),
 			},
 			onError:   cmd.EffectiveOnError(set.OnError),
 			onTimeout: cmd.EffectiveOnTimeout(set.OnTimeout),
