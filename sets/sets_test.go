@@ -770,6 +770,184 @@ func TestExecute_StabilizeWindow_ExhaustsRetries(t *testing.T) {
 	}
 }
 
+// ---- Execute: transient HTTP error retry (502/503/429) -----------------------
+
+func TestExecute_DispatchRetry_TransientErrorThenSucceeds(t *testing.T) {
+	const uri = "spotify:playlist:abc"
+	confirmedState := stateBody(spotify.PlaybackState{IsPlaying: true, Context: &spotify.PlaybackContext{URI: uri}})
+
+	var putCount int
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			if putCount == 1 {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			w.Write(confirmedState)
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: uri}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("expected eventual success after retrying the 502, got %v", err)
+	}
+	if putCount != 2 {
+		t.Errorf("expected exactly 2 dispatch attempts (initial + 1 retry), got %d", putCount)
+	}
+}
+
+func TestExecute_DispatchRetry_NonRetryableErrorIsFatal(t *testing.T) {
+	var putCount int
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			w.WriteHeader(http.StatusForbidden)
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: "spotify:playlist:abc"}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm: true,
+		Timeout: 5 * time.Second,
+	})
+	if err == nil {
+		t.Fatal("expected a 403 to be fatal immediately")
+	}
+	if putCount != 1 {
+		t.Errorf("expected exactly 1 dispatch attempt (no retry on a non-transient error), got %d", putCount)
+	}
+}
+
+func TestExecute_DispatchRetry_ExhaustsBudgetSharedWithDropRetry(t *testing.T) {
+	// Mirrors an actual observed sequence: the first dispatch confirms and
+	// then drops before stabilizing (consuming the one retry Execute
+	// allows), and the retry dispatch itself then hits a transient error.
+	// Since both failure modes share maxDispatchAttempts, the transient
+	// error is not retried again — it's returned immediately.
+	const uri = "spotify:playlist:abc"
+	confirmedState := stateBody(spotify.PlaybackState{IsPlaying: true, Context: &spotify.PlaybackContext{URI: uri}})
+	droppedState := stateBody(spotify.PlaybackState{IsPlaying: false})
+
+	var putCount int
+	var confirmedOnce bool
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			confirmedOnce = false
+			if putCount == 1 {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			// The automatic retry after the drop itself hits a transient
+			// error.
+			w.WriteHeader(http.StatusBadGateway)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			if !confirmedOnce {
+				confirmedOnce = true
+				w.Write(confirmedState)
+				return
+			}
+			// First dispatch attempt confirms once, then drops.
+			w.Write(droppedState)
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: uri}
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 20 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("expected the retry's own 502 to be fatal once the shared budget is exhausted")
+	}
+	var httpErr *spotify.HTTPStatusError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected the returned error to be the 502 itself, got %T: %v", err, err)
+	}
+	if putCount != 2 {
+		t.Errorf("expected exactly 2 dispatch attempts total, got %d", putCount)
+	}
+}
+
+func TestExecute_DispatchRetry_RetryAfterHonored(t *testing.T) {
+	const uri = "spotify:playlist:abc"
+	confirmedState := stateBody(spotify.PlaybackState{IsPlaying: true, Context: &spotify.PlaybackContext{URI: uri}})
+
+	var putCount int
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			putCount++
+			if putCount == 1 {
+				w.Header().Set("Retry-After", "1")
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			w.Write(confirmedState)
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{ContextURI: uri}
+	start := time.Now()
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 20 * time.Millisecond,
+	})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("expected eventual success after honoring Retry-After, got %v", err)
+	}
+	if elapsed < 900*time.Millisecond {
+		t.Errorf("expected Execute to wait ~1s per Retry-After before retrying, only took %s", elapsed)
+	}
+}
+
+func TestExecute_DispatchRetry_ContextCanceledDuringBackoff(t *testing.T) {
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadGateway)
+		},
+	})
+	defer srv.Close()
+
+	old := sets.DispatchRetryBackoff
+	sets.DispatchRetryBackoff = 50 * time.Millisecond
+	defer func() { sets.DispatchRetryBackoff = old }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+
+	a := &spotify.Play{ContextURI: "spotify:playlist:abc"}
+	err := sets.Execute(ctx, a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm: true,
+		Timeout: 5 * time.Second,
+	})
+	if err == nil {
+		t.Fatal("expected context cancellation during the retry backoff to return an error")
+	}
+}
+
 // ---- Execute: silent session-reset detection ---------------------------------
 
 func TestExecute_SessionReset_DropThenRetryRecovers(t *testing.T) {

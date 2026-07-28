@@ -2,6 +2,7 @@ package sets
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -13,10 +14,18 @@ const (
 	defaultPollInterval    = 500 * time.Millisecond
 	defaultTimeout         = 15 * time.Second
 	defaultStabilizeWindow = 2 * time.Second
-	// maxDispatchAttempts bounds how many times Execute re-dispatches a after
-	// it confirms and then drops before stabilizing (see staysConfirmed).
+	// maxDispatchAttempts bounds how many times Execute re-dispatches a:
+	// once after it confirms and then drops before stabilizing (see
+	// staysConfirmed), and once for a transient HTTP error straight out of
+	// Dispatch (see DispatchRetryBackoff) — both share this same budget.
 	maxDispatchAttempts = 2
 )
+
+// DispatchRetryBackoff is how long Execute waits before redispatching after
+// a transient HTTP error (502/503) straight out of Dispatch. A 429's
+// Retry-After value is used instead when present. A package var, not a
+// const, so tests can shrink it.
+var DispatchRetryBackoff = 1 * time.Second
 
 // Verbose enables poll/confirm/retry debug logging in Execute, set from the
 // CLI --verbose flag. It is a runtime debugging aid, not persisted
@@ -96,7 +105,11 @@ type ExecuteOptions struct {
 // some Spotify Connect devices (notably ones waking from an idle state)
 // report a successful transition and then silently drop a moment later. If
 // it drops within that window, Execute re-dispatches a and tries again, up
-// to maxDispatchAttempts, before giving up.
+// to maxDispatchAttempts, before giving up. A transient HTTP error straight
+// out of Dispatch (502, 503, or 429 — see spotify.HTTPStatusError.Retryable)
+// is also retried out of that same budget, waiting DispatchRetryBackoff (or
+// a 429's Retry-After, if present) first; any other error from Dispatch is
+// fatal immediately.
 func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts ExecuteOptions) error {
 	pollInterval := opts.PollInterval
 	if pollInterval <= 0 {
@@ -115,6 +128,20 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 	for attempt := 1; ; attempt++ {
 		logVerbose("dispatch attempt %d/%d: %s", attempt, maxDispatchAttempts, a.Label())
 		if err := a.Dispatch(ctx, c); err != nil {
+			var httpErr *spotify.HTTPStatusError
+			if errors.As(err, &httpErr) && httpErr.Retryable() && attempt < maxDispatchAttempts {
+				wait := DispatchRetryBackoff
+				if httpErr.RetryAfter > 0 {
+					wait = httpErr.RetryAfter
+				}
+				if time.Now().Add(wait).Before(deadline) {
+					logVerbose("dispatch failed with retryable status %d: %v — retrying in %s", httpErr.StatusCode, err, wait)
+					if sleepErr := sleepOrDone(ctx, wait); sleepErr != nil {
+						return sleepErr
+					}
+					continue
+				}
+			}
 			logVerbose("dispatch failed: %v", err)
 			return err
 		}

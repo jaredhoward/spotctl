@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -165,8 +166,9 @@ func (c *Client) RawRequest(ctx context.Context, method, path, body string) (int
 	return resp.StatusCode, respBody, nil
 }
 
-// doExpectSuccess executes req and returns nil on 2xx, or a descriptive error.
-// A 429 response includes the Retry-After value in the error message.
+// doExpectSuccess executes req and returns nil on 2xx, or an *HTTPStatusError
+// describing the failure. A 429 response's Retry-After header, if present,
+// is parsed onto the returned error.
 func (c *Client) doExpectSuccess(req *http.Request, action string) error {
 	resp, err := c.doRequest(req)
 	if err != nil {
@@ -176,14 +178,19 @@ func (c *Client) doExpectSuccess(req *http.Request, action string) error {
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode == http.StatusTooManyRequests {
-			retryAfter := resp.Header.Get("Retry-After")
-			if retryAfter != "" {
-				return fmt.Errorf("%s rate limited (429): retry after %s seconds", action, retryAfter)
-			}
-			return fmt.Errorf("%s rate limited (429)", action)
+		httpErr := &HTTPStatusError{
+			Action:     action,
+			StatusCode: resp.StatusCode,
+			Body:       strings.TrimSpace(string(body)),
 		}
-		return fmt.Errorf("%s returned unexpected status %d: %s", action, resp.StatusCode, strings.TrimSpace(string(body)))
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+				if secs, err := strconv.Atoi(retryAfter); err == nil {
+					httpErr.RetryAfter = time.Duration(secs) * time.Second
+				}
+			}
+		}
+		return httpErr
 	}
 
 	return nil

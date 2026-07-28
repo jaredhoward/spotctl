@@ -62,7 +62,7 @@ An optional `playback_poll_interval` field controls how often `spotctl` polls Sp
 playback_poll_interval: 500ms
 ```
 
-An optional `confirm_stabilize_window` field controls how long a first confirmation is re-checked before `spotctl` trusts it (default: `4s`). This exists because some Spotify Connect devices — notably ones waking from an idle state — report a successful play/transfer and then silently drop a moment later; `spotctl` re-dispatches once if that happens within the window before giving up. This applies uniformly to direct commands (`play`, `pause`, etc.) and to `run <set>`:
+An optional `confirm_stabilize_window` field controls how long a first confirmation is re-checked before `spotctl` trusts it (default: `4s`). This exists because some Spotify Connect devices — notably ones waking from an idle state — report a successful play/transfer and then silently drop a moment later; `spotctl` re-dispatches once if that happens within the window before giving up. A transient error from Spotify itself (502, 503, or 429 rate-limited) is retried out of that same one-retry budget — a 429 waits for the duration Spotify's `Retry-After` header specifies before retrying. This applies uniformly to direct commands (`play`, `pause`, etc.) and to `run <set>`:
 
 ```yaml
 confirm_stabilize_window: 4s
