@@ -2,6 +2,7 @@ package spotify
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 const (
 	defaultHTTPTimeout = 10 * time.Second
+	defaultAPIBase     = "https://api.spotify.com"
 )
 
 // Verbose enables raw HTTP request/response tracing to stderr, set from the
@@ -28,6 +30,7 @@ type Client struct {
 	accessToken string
 	httpClient  *http.Client
 	urlPlayer   string
+	apiBase     string
 }
 
 func NewClient(accessToken string) *Client {
@@ -35,6 +38,7 @@ func NewClient(accessToken string) *Client {
 		accessToken: accessToken,
 		httpClient:  &http.Client{Timeout: defaultHTTPTimeout},
 		urlPlayer:   "https://api.spotify.com/v1/me/player",
+		apiBase:     defaultAPIBase,
 	}
 }
 
@@ -44,6 +48,12 @@ func (c *Client) SetHTTPClient(client *http.Client) {
 
 func (c *Client) SetPlayerURL(url string) {
 	c.urlPlayer = url
+}
+
+// SetAPIBase overrides the base URL RawRequest resolves paths against
+// (defaults to https://api.spotify.com). Exists for tests.
+func (c *Client) SetAPIBase(base string) {
+	c.apiBase = base
 }
 
 // playerURL builds a player endpoint URL. device_id is appended when non-empty;
@@ -104,6 +114,44 @@ func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
 	}
 
 	return resp, nil
+}
+
+// RawRequest issues an arbitrary Spotify Web API request, bypassing every
+// action/confirm abstraction entirely. path is resolved against the
+// client's API base (https://api.spotify.com by default; a leading slash is
+// added if missing) — e.g. "/v1/me/player/play?device_id=xxx". body, if
+// non-empty, is sent as-is with Content-Type: application/json. Returns the
+// response status code and raw body regardless of status, so callers can
+// inspect error responses too.
+func (c *Client) RawRequest(ctx context.Context, method, path, body string) (int, []byte, error) {
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	var reqBody io.Reader
+	if body != "" {
+		reqBody = strings.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, c.apiBase+path, reqBody)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	return resp.StatusCode, respBody, nil
 }
 
 // doExpectSuccess executes req and returns nil on 2xx, or a descriptive error.

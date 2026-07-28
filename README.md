@@ -104,6 +104,7 @@ device_names:
 | `spotctl status` | Show current Spotify playback status |
 | `spotctl setup` | Interactive setup and OAuth flow |
 | `spotctl version` | Print the version |
+| `spotctl call <path> [body]` | Call an arbitrary Spotify Web API endpoint directly, bypassing all of spotctl's action/confirm logic |
 
 All playback commands (`play`, `pause`, `next`, `previous`, `shuffle`, `repeat`, `volume`, `transfer`) print the current playback status after the action completes, so you always know what the player is doing. Output is the same format as `spotctl status`.
 
@@ -139,6 +140,12 @@ spotctl repeat --device DEVICE_ID --state context --config ./config.yaml
 spotctl repeat --device DEVICE_ID --state off --config ./config.yaml
 spotctl volume --device DEVICE_ID --level 50 --config ./config.yaml
 spotctl transfer --device DEVICE_ID --play --config ./config.yaml
+```
+
+Raw API access (bypasses confirmation/polling entirely — useful for debugging, or hitting an endpoint spotctl doesn't wrap):
+```bash
+spotctl call /v1/me/player
+spotctl call -X PUT '/v1/me/player/play?device_id=DEVICE_ID' '{"context_uri":"spotify:playlist:PLAYLIST_ID"}'
 ```
 
 ## Sets
@@ -441,6 +448,16 @@ Only one of `--uri`, `--playlist`, `--track`, `--album`, or `--artist` may be sp
 |---|---|
 | `--device <id>` | Spotify device ID to transfer playback to (required) |
 | `--play` | Start playback immediately after transfer |
+
+### `call`
+
+| Flag | Description |
+|---|---|
+| `<path>` | Required. Resolved against `https://api.spotify.com`, e.g. `/v1/me/player/play?device_id=xxx` |
+| `[body]` | Optional raw request body, sent with `Content-Type: application/json` |
+| `--method`, `-X` | HTTP method (default `GET`) |
+
+Always prints `Status: <code>` plus the raw response body, even on a non-2xx response, so you can see exactly what the API said. Exits non-zero on a non-2xx status.
 
 ## `transfer` vs. `play` without a URI
 

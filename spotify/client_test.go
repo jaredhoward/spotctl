@@ -154,6 +154,128 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
+func TestRawRequest_GET_NoBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/me" {
+			t.Errorf("expected path /v1/me, got %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer t" {
+			t.Errorf("expected bearer token header, got %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"me"}`))
+	}))
+	defer server.Close()
+
+	client := &Client{accessToken: "t", httpClient: server.Client()}
+	client.SetAPIBase(server.URL)
+
+	status, body, err := client.RawRequest(context.Background(), "GET", "/v1/me", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != http.StatusOK {
+		t.Errorf("expected status 200, got %d", status)
+	}
+	if string(body) != `{"id":"me"}` {
+		t.Errorf("unexpected body: %s", body)
+	}
+}
+
+func TestRawRequest_PUT_WithBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("expected json content-type, got %q", r.Header.Get("Content-Type"))
+		}
+		got, _ := io.ReadAll(r.Body)
+		if string(got) != `{"context_uri":"spotify:playlist:abc"}` {
+			t.Errorf("unexpected request body: %s", got)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := &Client{accessToken: "t", httpClient: server.Client()}
+	client.SetAPIBase(server.URL)
+
+	status, body, err := client.RawRequest(context.Background(), "PUT", "/v1/me/player/play?device_id=xxx", `{"context_uri":"spotify:playlist:abc"}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != http.StatusNoContent {
+		t.Errorf("expected status 204, got %d", status)
+	}
+	if len(body) != 0 {
+		t.Errorf("expected empty body for 204, got %s", body)
+	}
+}
+
+func TestRawRequest_NonSuccessStatus_StillReturnsBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"message":"bad request"}}`))
+	}))
+	defer server.Close()
+
+	client := &Client{accessToken: "t", httpClient: server.Client()}
+	client.SetAPIBase(server.URL)
+
+	status, body, err := client.RawRequest(context.Background(), "GET", "/v1/whatever", "")
+	if err != nil {
+		t.Fatalf("expected no error for a non-2xx response, got %v", err)
+	}
+	if status != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", status)
+	}
+	if !strings.Contains(string(body), "bad request") {
+		t.Errorf("expected error body to be returned, got %s", body)
+	}
+}
+
+func TestRawRequest_AddsLeadingSlash(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/me" {
+			t.Errorf("expected leading slash normalized to /v1/me, got %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := &Client{accessToken: "t", httpClient: server.Client()}
+	client.SetAPIBase(server.URL)
+
+	if _, _, err := client.RawRequest(context.Background(), "GET", "v1/me", ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRawRequest_TransportError(t *testing.T) {
+	client := &Client{accessToken: "t", httpClient: &http.Client{Timeout: time.Millisecond}}
+	client.SetAPIBase("http://127.0.0.1:1")
+
+	_, _, err := client.RawRequest(context.Background(), "GET", "/v1/me", "")
+	if err == nil {
+		t.Fatal("expected error from unreachable server")
+	}
+}
+
+func TestRawRequest_InvalidMethod(t *testing.T) {
+	client := &Client{accessToken: "t", httpClient: http.DefaultClient}
+	client.SetAPIBase("http://example.com")
+
+	_, _, err := client.RawRequest(context.Background(), "BAD METHOD", "/v1/me", "")
+	if err == nil {
+		t.Fatal("expected error for invalid method")
+	}
+}
+
 func TestPlayerURL_WithAndWithoutDevice(t *testing.T) {
 	cases := []struct {
 		base     string
