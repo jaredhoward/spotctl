@@ -8,7 +8,23 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 )
+
+// PlayWakeSettleDelay is how long Play.Dispatch waits after waking a target
+// device (see the wake step in Dispatch) before checking that the wake
+// landed and issuing the actual play request. A package var, not a const,
+// so tests can shrink it.
+//
+// This used to be a 5-second polling loop (TEMP DEBUG instrumentation for a
+// WiiM/LinkPlay Spotify Connect investigation — see project history) that
+// re-fetched playback state every 500ms to watch for changes in the gap
+// between waking the device and playing. Every run showed the exact same
+// frozen state on every tick except device.is_active flipping true on the
+// very first one, so the polling itself added nothing beyond a single
+// check — reverted to a plain delay followed by exactly one confirming
+// check (not a loop).
+var PlayWakeSettleDelay = 500 * time.Millisecond
 
 // Action is the interface satisfied by every Spotify command and orchestration
 // primitive. Dispatch performs the operation; Confirmed reports whether the
@@ -42,6 +58,37 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 	if p.ContextURI == "" {
 		if state, err := c.GetCurrentPlayback(ctx); err == nil {
 			p.priorState = state
+		}
+	}
+
+	// Wake the target device before playing. Some Spotify Connect devices
+	// (observed on WiiM/LinkPlay hardware) report a successful play and then
+	// silently drop it a moment later, especially from idle — a race between
+	// the device attaching as the active Connect target and playback
+	// starting in the same combined call. Explicitly transferring first
+	// (without starting playback) mirrors how official clients behave
+	// (select device, then play) and gives the device a moment to settle
+	// before its first play command. A transfer failure here isn't fatal:
+	// the play request below still carries device_id and can perform its
+	// own combined transfer+play per Spotify's API.
+	if p.DeviceID != "" {
+		// TEMP DEBUG (WiiM investigation, see project history): observe what
+		// devices Spotify reports before waking the target, and capture
+		// playback state at the same moment for comparison, visible via
+		// --verbose HTTP tracing.
+		_, _ = c.GetDevices(ctx)
+		_, _ = c.GetCurrentPlayback(ctx)
+
+		if err := transferRequest(ctx, c, p.DeviceID, false); err == nil {
+			select {
+			case <-time.After(PlayWakeSettleDelay):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			// TEMP DEBUG (WiiM investigation): a single check (not a poll
+			// loop) to confirm the wake transfer actually attached the
+			// device as active, visible via --verbose HTTP tracing.
+			_, _ = c.GetCurrentPlayback(ctx)
 		}
 	}
 
@@ -275,10 +322,12 @@ type Transfer struct {
 	Play     bool
 }
 
-func (t *Transfer) Dispatch(ctx context.Context, c *Client) error {
+// transferRequest issues the low-level "transfer playback" call. Shared by
+// Transfer.Dispatch and Play.Dispatch's wake-before-play step.
+func transferRequest(ctx context.Context, c *Client, deviceID string, play bool) error {
 	body, err := json.Marshal(map[string]interface{}{
-		"device_ids": []string{t.DeviceID},
-		"play":       t.Play,
+		"device_ids": []string{deviceID},
+		"play":       play,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal transfer request: %w", err)
@@ -292,6 +341,10 @@ func (t *Transfer) Dispatch(ctx context.Context, c *Client) error {
 	req.Header.Set("Content-Type", "application/json")
 
 	return c.doExpectSuccess(req, "transfer playback")
+}
+
+func (t *Transfer) Dispatch(ctx context.Context, c *Client) error {
+	return transferRequest(ctx, c, t.DeviceID, t.Play)
 }
 
 func (t *Transfer) Confirmed(state *PlaybackState) bool {

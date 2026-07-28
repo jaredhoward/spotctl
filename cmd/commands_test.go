@@ -114,6 +114,11 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/devices":
+			// TEMP DEBUG: Play.Dispatch fetches the device list before
+			// waking the target device.
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"devices":[]}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/":
 			w.Header().Set("Content-Type", "application/json")
 			if playCalled {
@@ -121,6 +126,10 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 			} else {
 				w.Write(preState)
 			}
+		case r.Method == http.MethodPut && r.URL.Path == "/":
+			// Play.Dispatch wakes the target device with a transfer call
+			// before playing.
+			w.WriteHeader(http.StatusNoContent)
 		case r.Method == http.MethodPut && r.URL.Path == "/play":
 			playCalled = true
 			if r.URL.Query().Get("device_id") != "device-1" {

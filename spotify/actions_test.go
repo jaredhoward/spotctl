@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // multiHandler routes requests to per-method+path handlers, failing the test
@@ -29,6 +30,12 @@ func TestActions(t *testing.T) {
 	snapshotHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(snapshotState)
+	}
+	// devicesHandler stands in for the TEMP DEBUG "GET /devices" call
+	// Play.Dispatch makes before waking a target device.
+	devicesHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"devices":[]}`))
 	}
 
 	var tests = []struct {
@@ -137,7 +144,12 @@ func TestActions(t *testing.T) {
 			name:   "play with context",
 			action: &Play{DeviceID: "device", ContextURI: "spotify:track:abc"},
 			routes: map[string]http.HandlerFunc{
-				// ContextURI path does not snapshot.
+				// ContextURI path does not snapshot, but a DeviceID still
+				// triggers the devices-lookup + wake-transfer + poll steps
+				// before /play.
+				"GET /devices": devicesHandler,
+				"GET /":        func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+				"PUT /":        func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
 				"PUT /play": func(w http.ResponseWriter, r *http.Request) {
 					var payload map[string]string
 					if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -154,8 +166,12 @@ func TestActions(t *testing.T) {
 			name:   "play with device no context",
 			action: &Play{DeviceID: "device"},
 			routes: map[string]http.HandlerFunc{
-				// DeviceID but no ContextURI — snapshots current state.
-				"GET /": snapshotHandler,
+				// DeviceID but no ContextURI — snapshots current state, then
+				// still runs the devices-lookup + wake-transfer + poll steps
+				// before /play.
+				"GET /devices": devicesHandler,
+				"GET /":        snapshotHandler,
+				"PUT /":        func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
 				"PUT /play": func(w http.ResponseWriter, r *http.Request) {
 					if got := r.URL.Query().Get("device_id"); got != "device" {
 						t.Errorf("expected device_id=device, got %q", got)
@@ -315,6 +331,11 @@ func TestActions_ErrorResponse(t *testing.T) {
 		json.NewEncoder(w).Encode(PlaybackState{Item: &Track{URI: "spotify:track:prior"}})
 	}
 	forbidden := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) }
+	devicesOK := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"devices":[]}`))
+	}
+	noContent := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }
 
 	var tests = []struct {
 		name   string
@@ -328,10 +349,10 @@ func TestActions_ErrorResponse(t *testing.T) {
 			"PUT /pause": forbidden,
 		}},
 		{name: "play with context", action: &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}, routes: map[string]http.HandlerFunc{
-			"PUT /play": forbidden,
+			"GET /devices": devicesOK, "GET /": noContent, "PUT /": noContent, "PUT /play": forbidden,
 		}},
 		{name: "play without context", action: &Play{DeviceID: "device"}, routes: map[string]http.HandlerFunc{
-			"GET /": snapshotOK, "PUT /play": forbidden,
+			"GET /devices": devicesOK, "GET /": snapshotOK, "PUT /": noContent, "PUT /play": forbidden,
 		}},
 		{name: "previous", action: &Previous{DeviceID: "device"}, routes: map[string]http.HandlerFunc{
 			"GET /": snapshotOK, "POST /previous": forbidden,
@@ -754,6 +775,170 @@ func TestSnapshotDispatch(t *testing.T) {
 		}
 		if p.priorState != nil {
 			t.Fatal("expected priorState to be nil when ContextURI is set")
+		}
+	})
+}
+
+// TestPlay_WakeTransfer covers Play.Dispatch's wake-before-play step: a
+// device-targeted play fetches the device list and playback state for
+// comparison (TEMP DEBUG), transfers to the device with play=false (waking
+// it, without starting playback), waits PlayWakeSettleDelay, then issues the
+// real play request. See the comment on Play.Dispatch for why.
+func TestPlay_WakeTransfer(t *testing.T) {
+	t.Run("device set: fetches devices, compares state, wakes via transfer, confirms, then plays", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent) // compare-state check
+			case r.Method == http.MethodPut && r.URL.Path == "/":
+				var payload map[string]interface{}
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Fatal(err)
+				}
+				if payload["play"] != false {
+					t.Errorf("expected wake transfer play=false, got %#v", payload["play"])
+				}
+				deviceIDs, _ := payload["device_ids"].([]interface{})
+				if len(deviceIDs) != 1 || deviceIDs[0] != "device" {
+					t.Errorf("expected device_ids=[device], got %v", payload["device_ids"])
+				}
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := []string{"GET /devices", "GET /", "PUT /", "GET /", "PUT /play"}
+		if len(calls) != len(want) {
+			t.Fatalf("expected %v, got %v", want, calls)
+		}
+		for i, w := range want {
+			if calls[i] != w {
+				t.Fatalf("expected %v, got %v", want, calls)
+			}
+		}
+	})
+
+	t.Run("no device: skips devices lookup and wake transfer", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(calls) != 1 || calls[0] != "PUT /play" {
+			t.Fatalf("expected only play, no devices lookup or wake transfer, got %v", calls)
+		}
+	})
+
+	t.Run("wake transfer failure is non-fatal, play is still attempted", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent) // compare-state check
+			case r.Method == http.MethodPut && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNotFound) // e.g. device not found
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("expected play to succeed despite wake transfer failure, got: %v", err)
+		}
+	})
+
+	t.Run("devices lookup failure is non-fatal, wake and play still attempted", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.WriteHeader(http.StatusInternalServerError)
+			case r.Method == http.MethodPut && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("expected play to succeed despite devices lookup failure, got: %v", err)
+		}
+		if last := calls[len(calls)-1]; last != "PUT /play" {
+			t.Fatalf("expected play to still be attempted, got %v", calls)
+		}
+	})
+
+	t.Run("context canceled during settle delay aborts before play", func(t *testing.T) {
+		old := PlayWakeSettleDelay
+		PlayWakeSettleDelay = 50 * time.Millisecond
+		defer func() { PlayWakeSettleDelay = old }()
+
+		playCalled := false
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodPut && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				playCalled = true
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+		defer cancel()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(ctx, client); err == nil {
+			t.Fatal("expected error from context cancellation during the settle delay")
+		}
+		if playCalled {
+			t.Fatal("expected play request not to be sent before the settle delay completed")
 		}
 	})
 }

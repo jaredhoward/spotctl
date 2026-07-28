@@ -118,6 +118,10 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 			logVerbose("dispatch failed: %v", err)
 			return err
 		}
+		// TEMP DEBUG: dispatchedAt times how long it takes Confirmed to
+		// report true after the dispatch call returns (for the WiiM
+		// investigation — see project history).
+		dispatchedAt := time.Now()
 		if !opts.Confirm {
 			return nil
 		}
@@ -136,7 +140,7 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 			logVerbose("%s: never confirmed within %s", a.Label(), timeout)
 			return &TimeoutError{Timeout: timeout, ActionLabel: a.Label()}
 		}
-		logVerbose("%s: confirmed, checking it holds for %s", a.Label(), stabilizeWindow)
+		logVerbose("%s: confirmed after %s, checking it holds for %s", a.Label(), time.Since(dispatchedAt), stabilizeWindow)
 
 		stable, err := staysConfirmed(ctx, a, c, confirmedState, stabilizeWindow, pollInterval, deadline)
 		if err != nil {
