@@ -127,7 +127,7 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 
 	for attempt := 1; ; attempt++ {
 		logVerbose("dispatch attempt %d/%d: %s", attempt, maxDispatchAttempts, a.Label())
-		if err := a.Dispatch(ctx, c); err != nil {
+		if err := a.Dispatch(spotify.WithReason(ctx, "Requested Command"), c); err != nil {
 			var httpErr *spotify.HTTPStatusError
 			if errors.As(err, &httpErr) && httpErr.Retryable() && attempt < maxDispatchAttempts {
 				wait := DispatchRetryBackoff
@@ -202,7 +202,7 @@ func pollUntilConfirmed(ctx context.Context, a spotify.Action, c *spotify.Client
 		if !time.Now().Before(deadline) {
 			return nil, nil
 		}
-		state, err := c.GetCurrentPlayback(ctx)
+		state, err := c.GetCurrentPlayback(spotify.WithReason(ctx, "Polling for Confirmation"))
 		if err != nil {
 			consecutiveErrors++
 			logVerbose("poll: GetCurrentPlayback failed (%d/%d consecutive): %v", consecutiveErrors, maxConsecutiveErrors, err)
@@ -254,7 +254,7 @@ func staysConfirmed(ctx context.Context, a spotify.Action, c *spotify.Client, se
 			return false, ctx.Err()
 		default:
 		}
-		state, err := c.GetCurrentPlayback(ctx)
+		state, err := c.GetCurrentPlayback(spotify.WithReason(ctx, "Checking Stability"))
 		if err != nil {
 			consecutiveErrors++
 			logVerbose("stabilize: GetCurrentPlayback failed (%d/%d consecutive): %v", consecutiveErrors, maxConsecutiveErrors, err)

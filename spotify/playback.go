@@ -42,7 +42,7 @@ func (c *Client) GetCurrentPlayback(ctx context.Context) (*PlaybackState, error)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequest(req, "Get Playback State")
 	if err != nil {
 		return nil, fmt.Errorf("current playback request failed: %w", err)
 	}

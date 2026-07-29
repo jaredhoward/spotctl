@@ -31,7 +31,7 @@ func (c *Client) GetDevices(ctx context.Context) ([]Device, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequest(req, "Get Available Devices")
 	if err != nil {
 		return nil, fmt.Errorf("devices request failed: %w", err)
 	}

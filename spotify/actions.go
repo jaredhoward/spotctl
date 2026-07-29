@@ -56,7 +56,7 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 	// Snapshot current state before dispatching when we have no ContextURI to
 	// verify against. Used by Confirmed to detect a meaningful state change.
 	if p.ContextURI == "" {
-		if state, err := c.GetCurrentPlayback(ctx); err == nil {
+		if state, err := c.GetCurrentPlayback(WithReason(ctx, "Snapshotting State Before Dispatch")); err == nil {
 			p.priorState = state
 		}
 	}
@@ -76,10 +76,10 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 		// devices Spotify reports before waking the target, and capture
 		// playback state at the same moment for comparison, visible via
 		// --verbose HTTP tracing.
-		_, _ = c.GetDevices(ctx)
-		_, _ = c.GetCurrentPlayback(ctx)
+		_, _ = c.GetDevices(WithReason(ctx, "Wake Diagnostics"))
+		_, _ = c.GetCurrentPlayback(WithReason(ctx, "Wake Diagnostics"))
 
-		if err := transferRequest(ctx, c, p.DeviceID, false); err == nil {
+		if err := transferRequest(WithReason(ctx, "Waking Target Device"), c, p.DeviceID, false); err == nil {
 			select {
 			case <-time.After(PlayWakeSettleDelay):
 			case <-ctx.Done():
@@ -88,7 +88,7 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 			// TEMP DEBUG (WiiM investigation): a single check (not a poll
 			// loop) to confirm the wake transfer actually attached the
 			// device as active, visible via --verbose HTTP tracing.
-			_, _ = c.GetCurrentPlayback(ctx)
+			_, _ = c.GetCurrentPlayback(WithReason(ctx, "Confirming Device Woke Up"))
 		}
 	}
 
@@ -188,7 +188,7 @@ type Next struct {
 }
 
 func (n *Next) Dispatch(ctx context.Context, c *Client) error {
-	if state, err := c.GetCurrentPlayback(ctx); err == nil {
+	if state, err := c.GetCurrentPlayback(WithReason(ctx, "Snapshotting State Before Dispatch")); err == nil {
 		n.priorState = state
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(c.urlPlayer, "/next", n.DeviceID), nil)
@@ -212,7 +212,7 @@ type Previous struct {
 }
 
 func (p *Previous) Dispatch(ctx context.Context, c *Client) error {
-	if state, err := c.GetCurrentPlayback(ctx); err == nil {
+	if state, err := c.GetCurrentPlayback(WithReason(ctx, "Snapshotting State Before Dispatch")); err == nil {
 		p.priorState = state
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, playerURL(c.urlPlayer, "/previous", p.DeviceID), nil)

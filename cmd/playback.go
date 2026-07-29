@@ -232,7 +232,7 @@ func dispatchAndPrintStatus(ctx context.Context, a spotify.Action, client *spoti
 			return fmt.Errorf("%s: %w", errPrefix, err)
 		}
 	}
-	state, err := client.GetCurrentPlayback(ctx)
+	state, err := client.GetCurrentPlayback(spotify.WithReason(ctx, "Fetching Status to Display"))
 	if err != nil || state == nil {
 		return nil
 	}

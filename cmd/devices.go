@@ -25,7 +25,7 @@ func runDevices(cmd *cobra.Command, args []string) error {
 		cfg.DeviceNames = map[string]string{}
 	}
 
-	liveDevices, err := client.GetDevices(cmdCtx(cmd))
+	liveDevices, err := client.GetDevices(spotify.WithReason(cmdCtx(cmd), "Requested Command"))
 	if err != nil {
 		return fmt.Errorf("failed to get devices: %w", err)
 	}
