@@ -145,9 +145,9 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 			logVerbose("dispatch failed: %v", err)
 			return err
 		}
-		// TEMP DEBUG: dispatchedAt times how long it takes Confirmed to
-		// report true after the dispatch call returns (for the WiiM
-		// investigation — see project history).
+		// dispatchedAt times how long it takes Confirmed to report true
+		// after the dispatch call returns, surfaced in the "confirmed
+		// after %s" verbose log line below.
 		dispatchedAt := time.Now()
 		if !opts.Confirm {
 			return nil

@@ -100,10 +100,12 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 	// isn't fatal: the play request below still carries device_id and can
 	// perform its own combined transfer+play per Spotify's API.
 	if p.DeviceID != "" {
-		// TEMP DEBUG (WiiM investigation, see project history): observe what
-		// devices Spotify reports before waking the target, and capture
-		// playback state at the same moment for comparison, visible via
-		// --verbose HTTP tracing.
+		// The devices list is pure diagnostics — its result isn't used for
+		// anything besides --verbose visibility into what Spotify reports
+		// right before a wake decision. compareState, by contrast, is
+		// load-bearing: it's what alreadyActive (and therefore
+		// NeedsStabilize, see below) is decided from — do not remove it as
+		// "just debug output".
 		_, _ = c.GetDevices(WithReason(ctx, "Wake Diagnostics"))
 		compareState, _ := c.GetCurrentPlayback(WithReason(ctx, "Wake Diagnostics"))
 		alreadyActive := compareState != nil && compareState.Device.ID == p.DeviceID && compareState.Device.IsActive
@@ -119,9 +121,11 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			}
-			// TEMP DEBUG (WiiM investigation): a single check (not a poll
-			// loop) to confirm the wake transfer actually attached the
-			// device as active, visible via --verbose HTTP tracing.
+			// Pure diagnostics: confirms via --verbose HTTP tracing that the
+			// wake transfer actually attached the device as active. Not a
+			// poll loop — one check proved sufficient (see
+			// PlayWakeSettleDelay above) and its result isn't used for
+			// anything programmatically.
 			_, _ = c.GetCurrentPlayback(WithReason(ctx, "Confirming Device Woke Up"))
 		}
 	}

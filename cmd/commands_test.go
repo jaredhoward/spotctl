@@ -115,8 +115,8 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/devices":
-			// TEMP DEBUG: Play.Dispatch fetches the device list before
-			// waking the target device.
+			// Play.Dispatch fetches the device list (diagnostics only)
+			// before deciding whether to wake the target device.
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"devices":[]}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/":

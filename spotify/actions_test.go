@@ -31,7 +31,7 @@ func TestActions(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(snapshotState)
 	}
-	// devicesHandler stands in for the TEMP DEBUG "GET /devices" call
+	// devicesHandler stands in for the diagnostic "GET /devices" call
 	// Play.Dispatch makes before waking a target device.
 	devicesHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -780,10 +780,11 @@ func TestSnapshotDispatch(t *testing.T) {
 }
 
 // TestPlay_WakeTransfer covers Play.Dispatch's wake-before-play step: a
-// device-targeted play fetches the device list and playback state for
-// comparison (TEMP DEBUG), transfers to the device with play=false (waking
-// it, without starting playback), waits PlayWakeSettleDelay, then issues the
-// real play request. See the comment on Play.Dispatch for why.
+// device-targeted play fetches the device list (diagnostics only) and
+// playback state for comparison (load-bearing — decides alreadyActive),
+// transfers to the device with play=false (waking it, without starting
+// playback) unless it's already active, waits PlayWakeSettleDelay, then
+// issues the real play request. See the comment on Play.Dispatch for why.
 func TestPlay_WakeTransfer(t *testing.T) {
 	t.Run("device set: fetches devices, compares state, wakes via transfer, confirms, then plays", func(t *testing.T) {
 		var calls []string
