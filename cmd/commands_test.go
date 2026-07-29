@@ -178,7 +178,15 @@ func TestTransferCmdRunE_Success(t *testing.T) {
 	transferPlay = true
 	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 
-	transferCalled := false
+	// Transfer{Play:true} now delegates to Play.Dispatch's wake-then-resume
+	// sequence (see spotify.Transfer.playDelegate) instead of a single
+	// combined transfer+play call, so the mock needs to serve that whole
+	// sequence: devices lookup, two "nothing active yet" GET / calls
+	// (priorState snapshot + wake compare-state), a play:false wake
+	// transfer, then postState for every GET / after that (post-wake
+	// confirm, Execute's confirm poll, and stabilize re-checks).
+	var wakeTransferCalled, playCalled bool
+	var getRootCount int
 	postState, _ := json.Marshal(spotify.PlaybackState{
 		IsPlaying: true,
 		Device:    spotify.Device{ID: "device-1", Name: "Target", Type: "Speaker", IsActive: true},
@@ -186,23 +194,37 @@ func TestTransferCmdRunE_Success(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/devices":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"devices":[]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			getRootCount++
+			if getRootCount <= 2 {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(postState)
 		case r.Method == http.MethodPut && r.URL.Path == "/":
 			var payload map[string]interface{}
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatal(err)
 			}
-			if payload["play"] != true {
-				t.Fatalf("expected play=true, got %v", payload["play"])
+			if payload["play"] != false {
+				t.Fatalf("expected wake transfer play=false, got %v", payload["play"])
 			}
 			ids, _ := payload["device_ids"].([]interface{})
 			if len(ids) != 1 || ids[0] != "device-1" {
 				t.Fatalf("unexpected device_ids: %v", payload["device_ids"])
 			}
-			transferCalled = true
+			wakeTransferCalled = true
 			w.WriteHeader(http.StatusNoContent)
-		case r.Method == http.MethodGet && r.URL.Path == "/":
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(postState)
+		case r.Method == http.MethodPut && r.URL.Path == "/play":
+			if got := r.URL.Query().Get("device_id"); got != "device-1" {
+				t.Fatalf("expected device_id=device-1, got %q", got)
+			}
+			playCalled = true
+			w.WriteHeader(http.StatusNoContent)
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -215,8 +237,11 @@ func TestTransferCmdRunE_Success(t *testing.T) {
 	if err := transferCmd.RunE(transferCmd, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !transferCalled {
-		t.Error("expected transfer API to be called")
+	if !wakeTransferCalled {
+		t.Error("expected wake transfer (PUT / with play=false) to be called")
+	}
+	if !playCalled {
+		t.Error("expected play API (PUT /play) to be called")
 	}
 }
 

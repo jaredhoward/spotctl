@@ -358,6 +358,14 @@ func (v *Volume) Label() string {
 type Transfer struct {
 	DeviceID string
 	Play     bool
+	// playDelegate is used internally when Play is true: transferring with
+	// play:true in a single combined API call is the same unreliable
+	// pattern Play.Dispatch's wake-then-resume sequence exists to avoid
+	// (observed live: the device switched but playback silently stayed
+	// paused), so that case is delegated wholesale to a Play targeting the
+	// same device, reusing its wake/skip/stabilize behavior rather than
+	// duplicating it.
+	playDelegate *Play
 }
 
 // transferRequest issues the low-level "transfer playback" call. Shared by
@@ -382,7 +390,13 @@ func transferRequest(ctx context.Context, c *Client, deviceID string, play bool)
 }
 
 func (t *Transfer) Dispatch(ctx context.Context, c *Client) error {
-	return transferRequest(ctx, c, t.DeviceID, t.Play)
+	if t.Play {
+		if t.playDelegate == nil {
+			t.playDelegate = &Play{DeviceID: t.DeviceID}
+		}
+		return t.playDelegate.Dispatch(ctx, c)
+	}
+	return transferRequest(ctx, c, t.DeviceID, false)
 }
 
 func (t *Transfer) Confirmed(state *PlaybackState) bool {
@@ -397,4 +411,13 @@ func (t *Transfer) Confirmed(state *PlaybackState) bool {
 
 func (t *Transfer) Label() string {
 	return fmt.Sprintf("transfer device=%s play=%v", t.DeviceID, t.Play)
+}
+
+// NeedsStabilize delegates to the underlying Play when Play is true (see
+// playDelegate) — the same wake-then-drop race Play guards against applies
+// here, since a device-targeted transfer+play goes through the exact same
+// wake sequence. A plain transfer (Play false) never confirms playback, so
+// there's nothing to stabilize.
+func (t *Transfer) NeedsStabilize() bool {
+	return t.Play && (t.playDelegate == nil || t.playDelegate.NeedsStabilize())
 }

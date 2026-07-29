@@ -3,6 +3,7 @@ package spotify
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -251,28 +252,6 @@ func TestActions(t *testing.T) {
 					}
 					if got := r.URL.Query().Get("device_id"); got != "" {
 						t.Errorf("expected no device_id, got %q", got)
-					}
-					w.WriteHeader(http.StatusNoContent)
-				},
-			},
-		},
-
-		// Transfer
-		{
-			name:   "transfer with play",
-			action: &Transfer{DeviceID: "device", Play: true},
-			routes: map[string]http.HandlerFunc{
-				"PUT /": func(w http.ResponseWriter, r *http.Request) {
-					var payload map[string]interface{}
-					if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-						t.Fatal(err)
-					}
-					if payload["play"] != true {
-						t.Fatalf("expected play=true, got %#v", payload)
-					}
-					deviceIDs, ok := payload["device_ids"].([]interface{})
-					if !ok || len(deviceIDs) != 1 || deviceIDs[0] != "device" {
-						t.Fatalf("unexpected device_ids: %v", payload["device_ids"])
 					}
 					w.WriteHeader(http.StatusNoContent)
 				},
@@ -1163,6 +1142,191 @@ func TestPlay_NeedsStabilize(t *testing.T) {
 		}
 		if !p.NeedsStabilize() {
 			t.Error("expected second dispatch to require stabilize after an actual wake")
+		}
+	})
+}
+
+// TestTransfer_PlayDelegatesToPlay covers Transfer.Dispatch when Play is
+// true: rather than a single combined transfer+play call, it delegates to a
+// Play targeting the same device, reusing Play.Dispatch's wake-then-resume
+// sequence. See the comment on Transfer.playDelegate for why.
+func TestTransfer_PlayDelegatesToPlay(t *testing.T) {
+	t.Run("device needs waking: full wake sequence, then a bodyless resume (not a combined transfer+play)", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPut && r.URL.Path == "/":
+				var payload map[string]interface{}
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Fatal(err)
+				}
+				if payload["play"] != false {
+					t.Fatalf("expected wake transfer play=false, got %#v", payload["play"])
+				}
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				if body, _ := io.ReadAll(r.Body); len(body) != 0 {
+					t.Fatalf("expected a bodyless resume (not a context_uri play), got body: %s", body)
+				}
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		tr := &Transfer{DeviceID: "device", Play: true}
+		if err := tr.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := []string{"GET /", "GET /devices", "GET /", "PUT /", "GET /", "PUT /play"}
+		if len(calls) != len(want) {
+			t.Fatalf("expected %v, got %v", want, calls)
+		}
+		for i, w := range want {
+			if calls[i] != w {
+				t.Fatalf("expected %v, got %v", want, calls)
+			}
+		}
+	})
+
+	t.Run("device already active: skips the wake, single bodyless resume", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"is_playing":false,"device":{"id":"device","is_active":true}}`))
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		tr := &Transfer{DeviceID: "device", Play: true}
+		if err := tr.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := []string{"GET /", "GET /devices", "GET /", "PUT /play"}
+		if len(calls) != len(want) {
+			t.Fatalf("expected %v, got %v", want, calls)
+		}
+		for i, w := range want {
+			if calls[i] != w {
+				t.Fatalf("expected %v, got %v", want, calls)
+			}
+		}
+	})
+
+	t.Run("play false: still a single direct transfer call, no delegate involved", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			var payload map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["play"] != false {
+				t.Fatalf("expected play=false, got %#v", payload["play"])
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		tr := &Transfer{DeviceID: "device", Play: false}
+		if err := tr.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if want := []string{"PUT /"}; len(calls) != 1 || calls[0] != want[0] {
+			t.Fatalf("expected %v, got %v", want, calls)
+		}
+	})
+}
+
+func TestTransfer_NeedsStabilize(t *testing.T) {
+	t.Run("play false: never needs stabilize, dispatched or not", func(t *testing.T) {
+		tr := &Transfer{DeviceID: "device", Play: false}
+		if tr.NeedsStabilize() {
+			t.Error("expected NeedsStabilize false when Play is false")
+		}
+	})
+
+	t.Run("play true, not yet dispatched: defaults true", func(t *testing.T) {
+		tr := &Transfer{DeviceID: "device", Play: true}
+		if !tr.NeedsStabilize() {
+			t.Error("expected NeedsStabilize true by default when Play is true")
+		}
+	})
+
+	t.Run("play true, dispatch skipped wake (already active): false", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"is_playing":false,"device":{"id":"device","is_active":true}}`))
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		tr := &Transfer{DeviceID: "device", Play: true}
+		if err := tr.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if tr.NeedsStabilize() {
+			t.Error("expected NeedsStabilize false after the delegate skipped an already-active wake")
+		}
+	})
+
+	t.Run("play true, dispatch performed a real wake: true", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPut && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		tr := &Transfer{DeviceID: "device", Play: true}
+		if err := tr.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !tr.NeedsStabilize() {
+			t.Error("expected NeedsStabilize true after the delegate performed an actual wake")
 		}
 	})
 }

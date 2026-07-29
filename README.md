@@ -62,7 +62,7 @@ An optional `playback_poll_interval` field controls how often `spotctl` polls Sp
 playback_poll_interval: 500ms
 ```
 
-An optional `confirm_stabilize_window` field controls how long a first confirmation is re-checked before `spotctl` trusts it (default: `4s`). This exists because some Spotify Connect devices — notably ones waking from an idle state — report a successful play and then silently drop a moment later; `spotctl` re-dispatches once if that happens within the window before giving up. Since that failure is specific to waking a device from idle, only `play` targeting a device that actually needed waking uses this window — if the device is already the active Connect target, or the command has no wake step at all (`pause`, `next`, `previous`, `shuffle`, `repeat`, `volume`, `transfer`), a single confirmation is trusted immediately. A transient error from Spotify itself (502, 503, or 429 rate-limited) is retried out of that same one-retry budget regardless of the command — a 429 waits for the duration Spotify's `Retry-After` header specifies before retrying. This applies to both direct commands and to `run <set>`:
+An optional `confirm_stabilize_window` field controls how long a first confirmation is re-checked before `spotctl` trusts it (default: `4s`). This exists because some Spotify Connect devices — notably ones waking from an idle state — report a successful play and then silently drop a moment later; `spotctl` re-dispatches once if that happens within the window before giving up. Since that failure is specific to waking a device from idle, this window only applies when a device actually needed waking — that's `play` targeting a device (whether or not a URI is given), and `transfer --play` (see [`transfer` vs. `play` without a URI](#transfer-vs-play-without-a-uri) — it's the same operation under the hood). If the device is already the active Connect target, or the command has no wake step at all (`pause`, `next`, `previous`, `shuffle`, `repeat`, `volume`, or `transfer` without `--play`), a single confirmation is trusted immediately. A transient error from Spotify itself (502, 503, or 429 rate-limited) is retried out of that same one-retry budget regardless of the command — a 429 waits for the duration Spotify's `Retry-After` header specifies before retrying. This applies to both direct commands and to `run <set>`:
 
 ```yaml
 confirm_stabilize_window: 4s
@@ -197,7 +197,7 @@ Each command in a set has:
 | `name` | — | Optional label for this command. Used in log output and `spotctl sets` listings. |
 | `device_id` | — | Spotify device ID for this command. Overrides the set-level `device_id`. Omit to target the active device. Also accepts a `{{ name }}` placeholder, same as the set-level field. |
 | `params` | — | Action-specific parameters (see below) |
-| `confirm` | set-level or `true` | Poll Spotify state until the action is reflected. For `play` on a device that needed waking from idle, also keeps re-checking for `confirm_stabilize_window` to make sure it holds (re-dispatching once if it drops) before continuing — other commands trust the first confirmation. Set to `false` to fire-and-forget. |
+| `confirm` | set-level or `true` | Poll Spotify state until the action is reflected. For `play` (any device) or `transfer` with `play: true` on a device that needed waking from idle, also keeps re-checking for `confirm_stabilize_window` to make sure it holds (re-dispatching once if it drops) before continuing — other commands trust the first confirmation. Set to `false` to fire-and-forget. |
 | `timeout` | set-level or `15s` | Overall deadline for the command including confirmation polling |
 | `on_error` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
 | `on_timeout` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
@@ -453,7 +453,7 @@ Only one of `--uri`, `--playlist`, `--track`, `--album`, or `--artist` may be sp
 | Flag | Description |
 |---|---|
 | `--device <id>` | Spotify device ID to transfer playback to (required) |
-| `--play` | Start playback immediately after transfer |
+| `--play` | Start playback immediately after transfer — see [`transfer` vs. `play` without a URI](#transfer-vs-play-without-a-uri) |
 
 ### `call`
 
@@ -467,27 +467,17 @@ Always prints `Status: <code>` plus the raw response body, even on a non-2xx res
 
 ## `transfer` vs. `play` without a URI
 
-These two commands can look similar when no new context is intended:
-
 ```bash
-# Transfer the active session to a device (session migration)
+# These two are the same operation:
 spotctl transfer --device DEVICE_ID --play --config ./config.yaml
-
-# Resume playback on a device (no URI supplied)
 spotctl play --device DEVICE_ID --config ./config.yaml
 ```
 
-They map to different Spotify API calls and behave differently:
+`transfer --play` doesn't make its own API call — `Transfer` delegates directly to `Play` targeting the same device when `--play` is set, so the two commands run identical code. Both go through the same wake-then-resume sequence: if the device isn't already the active Connect target, `spotctl` first calls `PUT /me/player` with `play:false` (which is what actually migrates the session — queue, track position, shuffle/repeat all carry over), then resumes with a bodyless `PUT /me/player/play`. If the device is already active, both skip straight to the resume call.
 
-| | `transfer` | `play` (no URI) |
-|---|---|---|
-| API call | `PUT /me/player` | `PUT /me/player/play` |
-| Carries over queue | Yes | No |
-| Preserves track position | Yes | No |
-| Preserves shuffle/repeat | Yes | No |
-| Intended use | Moving an active session between devices | Resuming a device's last context |
+Use `spotctl play --device DEVICE_ID` for this — it's the more general form, since it also accepts `--uri` (or a playlist/track/album/artist) when you want to start something specific rather than resume whatever the device last had loaded. `spotctl transfer --play` is kept as an alias with the same behavior.
 
-Use `spotctl transfer --play` when handing off an active session from one device to another. Use `spotctl play --uri` (or a set) when starting something specific on a device.
+`spotctl transfer` **without** `--play` is a genuinely different, simpler operation: it moves the Connect target to a device without confirming or starting playback — one raw API call, no wake logic, nothing to stabilize. Use it when you want to reposition a device without triggering playback.
 
 ## Re-authentication
 
