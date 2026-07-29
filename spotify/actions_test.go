@@ -833,6 +833,80 @@ func TestPlay_WakeTransfer(t *testing.T) {
 		}
 	})
 
+	t.Run("device already active: skips wake transfer and settle delay, plays immediately", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"is_playing":false,"device":{"id":"device","is_active":true}}`))
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := []string{"GET /devices", "GET /", "PUT /play"}
+		if len(calls) != len(want) {
+			t.Fatalf("expected %v, got %v", want, calls)
+		}
+		for i, w := range want {
+			if calls[i] != w {
+				t.Fatalf("expected %v, got %v", want, calls)
+			}
+		}
+	})
+
+	t.Run("different device active: still wakes via transfer", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"is_playing":true,"device":{"id":"other-device","is_active":true}}`))
+			case r.Method == http.MethodPut && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := []string{"GET /devices", "GET /", "PUT /", "GET /", "PUT /play"}
+		if len(calls) != len(want) {
+			t.Fatalf("expected %v, got %v", want, calls)
+		}
+		for i, w := range want {
+			if calls[i] != w {
+				t.Fatalf("expected %v, got %v", want, calls)
+			}
+		}
+	})
+
 	t.Run("no device: skips devices lookup and wake transfer", func(t *testing.T) {
 		var calls []string
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -939,6 +1013,155 @@ func TestPlay_WakeTransfer(t *testing.T) {
 		}
 		if playCalled {
 			t.Fatal("expected play request not to be sent before the settle delay completed")
+		}
+	})
+}
+
+func TestPlay_NeedsStabilize(t *testing.T) {
+	t.Run("true before any dispatch", func(t *testing.T) {
+		p := &Play{}
+		if !p.NeedsStabilize() {
+			t.Error("expected NeedsStabilize to default true")
+		}
+	})
+
+	t.Run("false after dispatch skips wake because device already active", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"is_playing":false,"device":{"id":"device","is_active":true}}`))
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.NeedsStabilize() {
+			t.Error("expected NeedsStabilize false after skipping an already-active wake")
+		}
+	})
+
+	t.Run("true after dispatch performs a real wake", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent) // nothing active
+			case r.Method == http.MethodPut && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent) // wake transfer
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !p.NeedsStabilize() {
+			t.Error("expected NeedsStabilize true after an actual wake")
+		}
+	})
+
+	t.Run("true when wake transfer fails", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPut && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNotFound) // wake transfer fails
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !p.NeedsStabilize() {
+			t.Error("expected NeedsStabilize true when the wake transfer itself failed")
+		}
+	})
+
+	t.Run("true when no device is targeted", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !p.NeedsStabilize() {
+			t.Error("expected NeedsStabilize true when no device is targeted")
+		}
+	})
+
+	t.Run("resets to true on a later dispatch that does need to wake", func(t *testing.T) {
+		callCount := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/devices":
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"devices":[]}`))
+			case r.Method == http.MethodGet && r.URL.Path == "/":
+				callCount++
+				if callCount == 1 {
+					w.Header().Set("Content-Type", "application/json")
+					w.Write([]byte(`{"is_playing":false,"device":{"id":"device","is_active":true}}`))
+					return
+				}
+				w.WriteHeader(http.StatusNoContent) // second dispatch: nothing active
+			case r.Method == http.MethodPut && r.URL.Path == "/":
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPut && r.URL.Path == "/play":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := &Client{accessToken: "t", httpClient: srv.Client(), urlPlayer: srv.URL}
+		p := &Play{DeviceID: "device", ContextURI: "spotify:track:abc"}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatal(err)
+		}
+		if p.NeedsStabilize() {
+			t.Fatal("expected first dispatch to skip wake (already active)")
+		}
+		if err := p.Dispatch(context.Background(), client); err != nil {
+			t.Fatal(err)
+		}
+		if !p.NeedsStabilize() {
+			t.Error("expected second dispatch to require stabilize after an actual wake")
 		}
 	})
 }

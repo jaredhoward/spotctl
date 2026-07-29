@@ -167,7 +167,18 @@ func Execute(ctx context.Context, a spotify.Action, c *spotify.Client, opts Exec
 			logVerbose("%s: never confirmed within %s", a.Label(), timeout)
 			return &TimeoutError{Timeout: timeout, ActionLabel: a.Label()}
 		}
-		logVerbose("%s: confirmed after %s, checking it holds for %s", a.Label(), time.Since(dispatchedAt), stabilizeWindow)
+		logVerbose("%s: confirmed after %s", a.Label(), time.Since(dispatchedAt))
+
+		// Only actions that opt in via Stabilizer (currently just Play, and
+		// only when it actually woke the target device — see
+		// spotify.Play.NeedsStabilize) get the extra re-check. Everything
+		// else trusts a single confirm: there's no wake step and no
+		// observed "confirmed then silently reverted" failure to guard
+		// against for them.
+		if stabilizer, ok := a.(spotify.Stabilizer); !ok || !stabilizer.NeedsStabilize() {
+			return nil
+		}
+		logVerbose("%s: checking it holds for %s", a.Label(), stabilizeWindow)
 
 		stable, err := staysConfirmed(ctx, a, c, confirmedState, stabilizeWindow, pollInterval, deadline)
 		if err != nil {

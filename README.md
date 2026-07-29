@@ -62,7 +62,7 @@ An optional `playback_poll_interval` field controls how often `spotctl` polls Sp
 playback_poll_interval: 500ms
 ```
 
-An optional `confirm_stabilize_window` field controls how long a first confirmation is re-checked before `spotctl` trusts it (default: `4s`). This exists because some Spotify Connect devices — notably ones waking from an idle state — report a successful play/transfer and then silently drop a moment later; `spotctl` re-dispatches once if that happens within the window before giving up. A transient error from Spotify itself (502, 503, or 429 rate-limited) is retried out of that same one-retry budget — a 429 waits for the duration Spotify's `Retry-After` header specifies before retrying. This applies uniformly to direct commands (`play`, `pause`, etc.) and to `run <set>`:
+An optional `confirm_stabilize_window` field controls how long a first confirmation is re-checked before `spotctl` trusts it (default: `4s`). This exists because some Spotify Connect devices — notably ones waking from an idle state — report a successful play and then silently drop a moment later; `spotctl` re-dispatches once if that happens within the window before giving up. Since that failure is specific to waking a device from idle, only `play` targeting a device that actually needed waking uses this window — if the device is already the active Connect target, or the command has no wake step at all (`pause`, `next`, `previous`, `shuffle`, `repeat`, `volume`, `transfer`), a single confirmation is trusted immediately. A transient error from Spotify itself (502, 503, or 429 rate-limited) is retried out of that same one-retry budget regardless of the command — a 429 waits for the duration Spotify's `Retry-After` header specifies before retrying. This applies to both direct commands and to `run <set>`:
 
 ```yaml
 confirm_stabilize_window: 4s
@@ -197,7 +197,7 @@ Each command in a set has:
 | `name` | — | Optional label for this command. Used in log output and `spotctl sets` listings. |
 | `device_id` | — | Spotify device ID for this command. Overrides the set-level `device_id`. Omit to target the active device. Also accepts a `{{ name }}` placeholder, same as the set-level field. |
 | `params` | — | Action-specific parameters (see below) |
-| `confirm` | set-level or `true` | Poll Spotify state until the action is reflected, then keep re-checking for `confirm_stabilize_window` to make sure it holds (re-dispatching once if it drops) before continuing. Set to `false` to fire-and-forget. |
+| `confirm` | set-level or `true` | Poll Spotify state until the action is reflected. For `play` on a device that needed waking from idle, also keeps re-checking for `confirm_stabilize_window` to make sure it holds (re-dispatching once if it drops) before continuing — other commands trust the first confirmation. Set to `false` to fire-and-forget. |
 | `timeout` | set-level or `15s` | Overall deadline for the command including confirmation polling |
 | `on_error` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |
 | `on_timeout` | set-level or `fail` | `fail` \| `continue` \| `skip_remaining` |

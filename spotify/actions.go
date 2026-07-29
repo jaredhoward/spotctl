@@ -36,6 +36,19 @@ type Action interface {
 	Label() string
 }
 
+// Stabilizer is implemented by actions whose Dispatch determines, per call,
+// whether Execute should keep re-checking confirmation for the stabilize
+// window rather than trusting a single confirm. Actions that don't
+// implement it (Pause, Next, Previous, Shuffle, Repeat, Volume, Transfer)
+// are always single-confirm: none of them involve a wake step, and nothing
+// in this investigation has observed a comparable "confirmed then silently
+// reverted" failure for any of them — unlike Play, where a device waking
+// from idle has been observed to confirm playback and then drop it a
+// moment later.
+type Stabilizer interface {
+	NeedsStabilize() bool
+}
+
 // Play starts or resumes playback, optionally on a specific device and/or
 // with a specific context URI.
 //
@@ -47,12 +60,24 @@ type Action interface {
 //     snapshot fails or nothing was active, priorState is nil and Confirmed
 //     returns false, causing polling to continue until timeout.
 type Play struct {
-	DeviceID   string
-	ContextURI string
-	priorState *PlaybackState // captured at Dispatch when no ContextURI is set
+	DeviceID             string
+	ContextURI           string
+	priorState           *PlaybackState // captured at Dispatch when no ContextURI is set
+	alreadyActiveSkipped bool           // this Dispatch found the device already active and skipped waking it
 }
 
+// NeedsStabilize reports whether Execute should hold this confirmation open
+// for the stabilize window. True by default, since the wake-then-drop race
+// this guards against can't be ruled out unless we know for certain there
+// was nothing to wake: a failed wake attempt, or no DeviceID at all, are
+// both less certain than a clean skip, not more, so they still stabilize.
+// False only when this Dispatch found the target device already active and
+// skipped waking it entirely — see Dispatch.
+func (p *Play) NeedsStabilize() bool { return !p.alreadyActiveSkipped }
+
 func (p *Play) Dispatch(ctx context.Context, c *Client) error {
+	p.alreadyActiveSkipped = false
+
 	// Snapshot current state before dispatching when we have no ContextURI to
 	// verify against. Used by Confirmed to detect a meaningful state change.
 	if p.ContextURI == "" {
@@ -61,25 +86,34 @@ func (p *Play) Dispatch(ctx context.Context, c *Client) error {
 		}
 	}
 
-	// Wake the target device before playing. Some Spotify Connect devices
-	// (observed on WiiM/LinkPlay hardware) report a successful play and then
-	// silently drop it a moment later, especially from idle — a race between
-	// the device attaching as the active Connect target and playback
-	// starting in the same combined call. Explicitly transferring first
-	// (without starting playback) mirrors how official clients behave
-	// (select device, then play) and gives the device a moment to settle
-	// before its first play command. A transfer failure here isn't fatal:
-	// the play request below still carries device_id and can perform its
-	// own combined transfer+play per Spotify's API.
+	// Wake the target device before playing, unless it's already the active
+	// Connect target. Some Spotify Connect devices (observed on WiiM/LinkPlay
+	// hardware) report a successful play and then silently drop it a moment
+	// later, especially from idle — a race between the device attaching as
+	// the active Connect target and playback starting in the same combined
+	// call. Explicitly transferring first (without starting playback)
+	// mirrors how official clients behave (select device, then play) and
+	// gives the device a moment to settle before its first play command.
+	// That race doesn't apply when the device is already active, so waking
+	// it is skipped in that case — pure overhead (a transfer, a settle
+	// delay, and a confirm check) with nothing to gain. A transfer failure
+	// isn't fatal: the play request below still carries device_id and can
+	// perform its own combined transfer+play per Spotify's API.
 	if p.DeviceID != "" {
 		// TEMP DEBUG (WiiM investigation, see project history): observe what
 		// devices Spotify reports before waking the target, and capture
 		// playback state at the same moment for comparison, visible via
 		// --verbose HTTP tracing.
 		_, _ = c.GetDevices(WithReason(ctx, "Wake Diagnostics"))
-		_, _ = c.GetCurrentPlayback(WithReason(ctx, "Wake Diagnostics"))
+		compareState, _ := c.GetCurrentPlayback(WithReason(ctx, "Wake Diagnostics"))
+		alreadyActive := compareState != nil && compareState.Device.ID == p.DeviceID && compareState.Device.IsActive
 
-		if err := transferRequest(WithReason(ctx, "Waking Target Device"), c, p.DeviceID, false); err == nil {
+		if alreadyActive {
+			p.alreadyActiveSkipped = true
+			if Verbose {
+				logHTTP("[Wake Skipped: device already active]")
+			}
+		} else if err := transferRequest(WithReason(ctx, "Waking Target Device"), c, p.DeviceID, false); err == nil {
 			select {
 			case <-time.After(PlayWakeSettleDelay):
 			case <-ctx.Done():

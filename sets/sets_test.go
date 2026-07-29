@@ -1204,6 +1204,87 @@ func TestExecute_SessionReset_OnFirstStabilizeTick(t *testing.T) {
 	}
 }
 
+// ---- Execute: stabilize scoped to Play's wake race ---------------------------
+
+func TestExecute_AlreadyActiveSkipsStabilize(t *testing.T) {
+	// Device already active: Play.Dispatch skips the wake, so
+	// Play.NeedsStabilize is false and Execute should trust a single
+	// confirm rather than re-checking for the stabilize window. A large
+	// StabilizeWindow with a tiny PollInterval makes any accidental
+	// stabilize polling obvious (many more than 2 total GET / calls, and
+	// a run well past the window).
+	var getRootCount int
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"GET /devices": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"devices":[]}`))
+		},
+		"PUT /play": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			getRootCount++
+			w.Write(stateBody(spotify.PlaybackState{
+				IsPlaying: true,
+				Device:    spotify.Device{ID: "d1", IsActive: true},
+				Context:   &spotify.PlaybackContext{URI: "spotify:playlist:x"},
+			}))
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Play{DeviceID: "d1", ContextURI: "spotify:playlist:x"}
+	start := time.Now()
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 500 * time.Millisecond,
+	})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if getRootCount != 2 {
+		t.Errorf("expected exactly 2 GET / calls (wake compare-state + confirm poll), no stabilize re-checks, got %d", getRootCount)
+	}
+	if elapsed >= 500*time.Millisecond {
+		t.Errorf("expected Execute to skip the stabilize window and return quickly, took %s", elapsed)
+	}
+}
+
+func TestExecute_NonStabilizerActionSkipsStabilize(t *testing.T) {
+	// Pause doesn't implement spotify.Stabilizer, so Execute should trust a
+	// single confirm — no wake step exists for it, and no "confirmed then
+	// silently reverted" failure has ever been observed for it.
+	var getCount int
+	srv := mockServer(t, map[string]http.HandlerFunc{
+		"PUT /pause": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		"GET /": func(w http.ResponseWriter, r *http.Request) {
+			getCount++
+			w.Write(stateBody(spotify.PlaybackState{IsPlaying: false}))
+		},
+	})
+	defer srv.Close()
+
+	a := &spotify.Pause{DeviceID: "d1"}
+	start := time.Now()
+	err := sets.Execute(context.Background(), a, newClient(t, srv), sets.ExecuteOptions{
+		Confirm:         true,
+		Timeout:         5 * time.Second,
+		PollInterval:    5 * time.Millisecond,
+		StabilizeWindow: 500 * time.Millisecond,
+	})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if getCount != 1 {
+		t.Errorf("expected exactly 1 confirm poll, no stabilize re-checks, got %d", getCount)
+	}
+	if elapsed >= 500*time.Millisecond {
+		t.Errorf("expected Execute to skip stabilize for a non-Stabilizer action, took %s", elapsed)
+	}
+}
+
 // ---- Execute: verbose logging ------------------------------------------------
 
 func TestExecute_VerboseLogsPollAndStabilizeDetail(t *testing.T) {
