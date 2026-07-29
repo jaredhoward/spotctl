@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/jaredhoward/spotctl/config"
 	"github.com/jaredhoward/spotctl/sets"
@@ -35,12 +34,12 @@ func runPlay(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	client, err := newClientFromConfig(cmdCtx(cmd))
+	cfg, client, err := loadConfigWithClient(cmdCtx(cmd))
 	if err != nil {
 		return err
 	}
 
-	return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Play{DeviceID: playDeviceID, ContextURI: contextURI}, client, "play failed")
+	return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Play{DeviceID: playDeviceID, ContextURI: contextURI}, client, cfg, "play failed")
 }
 
 // resolvePlayURI validates that at most one URI-type flag was set and builds
@@ -92,11 +91,11 @@ var pauseCmd = &cobra.Command{
 	Use:   "pause",
 	Short: "Pause Spotify playback",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := newClientFromConfig(cmdCtx(cmd))
+		cfg, client, err := loadConfigWithClient(cmdCtx(cmd))
 		if err != nil {
 			return err
 		}
-		return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Pause{DeviceID: pauseDeviceID}, client, "pause failed")
+		return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Pause{DeviceID: pauseDeviceID}, client, cfg, "pause failed")
 	},
 }
 
@@ -104,11 +103,11 @@ var nextCmd = &cobra.Command{
 	Use:   "next",
 	Short: "Skip to the next track",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := newClientFromConfig(cmdCtx(cmd))
+		cfg, client, err := loadConfigWithClient(cmdCtx(cmd))
 		if err != nil {
 			return err
 		}
-		return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Next{DeviceID: nextDeviceID}, client, "next failed")
+		return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Next{DeviceID: nextDeviceID}, client, cfg, "next failed")
 	},
 }
 
@@ -116,11 +115,11 @@ var previousCmd = &cobra.Command{
 	Use:   "previous",
 	Short: "Return to the previous track",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := newClientFromConfig(cmdCtx(cmd))
+		cfg, client, err := loadConfigWithClient(cmdCtx(cmd))
 		if err != nil {
 			return err
 		}
-		return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Previous{DeviceID: previousDeviceID}, client, "previous failed")
+		return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Previous{DeviceID: previousDeviceID}, client, cfg, "previous failed")
 	},
 }
 
@@ -133,11 +132,11 @@ var shuffleCmd = &cobra.Command{
 	Use:   "shuffle",
 	Short: "Enable or disable shuffle",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := newClientFromConfig(cmdCtx(cmd))
+		cfg, client, err := loadConfigWithClient(cmdCtx(cmd))
 		if err != nil {
 			return err
 		}
-		return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Shuffle{DeviceID: shuffleDeviceID, Enabled: shuffleEnabled}, client, "shuffle failed")
+		return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Shuffle{DeviceID: shuffleDeviceID, Enabled: shuffleEnabled}, client, cfg, "shuffle failed")
 	},
 }
 
@@ -153,11 +152,11 @@ var repeatCmd = &cobra.Command{
 		if repeatState != "off" && repeatState != "track" && repeatState != "context" {
 			return fmt.Errorf("--state must be one of: off, track, context (got %q)", repeatState)
 		}
-		client, err := newClientFromConfig(cmdCtx(cmd))
+		cfg, client, err := loadConfigWithClient(cmdCtx(cmd))
 		if err != nil {
 			return err
 		}
-		return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Repeat{DeviceID: repeatDeviceID, State: repeatState}, client, "repeat failed")
+		return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Repeat{DeviceID: repeatDeviceID, State: repeatState}, client, cfg, "repeat failed")
 	},
 }
 
@@ -177,12 +176,12 @@ func runTransfer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("transfer requires --device")
 	}
 
-	client, err := newClientFromConfig(cmdCtx(cmd))
+	cfg, client, err := loadConfigWithClient(cmdCtx(cmd))
 	if err != nil {
 		return err
 	}
 
-	return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Transfer{DeviceID: transferDeviceID, Play: transferPlay}, client, "transfer failed")
+	return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Transfer{DeviceID: transferDeviceID, Play: transferPlay}, client, cfg, "transfer failed")
 }
 
 // ---- volume -----------------------------------------------------------------
@@ -204,25 +203,28 @@ func runVolume(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("volume must be between 0 and 100 (got %d)", volumeLevel)
 	}
 
-	client, err := newClientFromConfig(cmdCtx(cmd))
+	cfg, client, err := loadConfigWithClient(cmdCtx(cmd))
 	if err != nil {
 		return err
 	}
 
-	return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Volume{DeviceID: volumeDeviceID, Level: volumeLevel}, client, "volume failed")
+	return dispatchAndPrintStatus(cmdCtx(cmd), &spotify.Volume{DeviceID: volumeDeviceID, Level: volumeLevel}, client, cfg, "volume failed")
 }
 
 // ---- helper -----------------------------------------------------------------
 
-// dispatchAndPrintStatus dispatches a with confirmation polling (5s timeout),
-// then fetches and prints the current playback status. A confirmation timeout
-// is treated as a soft outcome — status is still printed so the user can see
+// dispatchAndPrintStatus dispatches a with confirmation polling, then fetches
+// and prints the current playback status. The timeout budget matches
+// sets.Execute's own default so it comfortably exceeds cfg's stabilize
+// window regardless of how it's configured. A confirmation timeout is
+// treated as a soft outcome — status is still printed so the user can see
 // what the player is actually doing.
-func dispatchAndPrintStatus(ctx context.Context, a spotify.Action, client *spotify.Client, errPrefix string) error {
+func dispatchAndPrintStatus(ctx context.Context, a spotify.Action, client *spotify.Client, cfg *config.Config, errPrefix string) error {
 	opts := sets.ExecuteOptions{
-		Confirm:      true,
-		Timeout:      5 * time.Second,
-		PollInterval: 500 * time.Millisecond,
+		Confirm:         true,
+		Timeout:         config.DefaultConfirmTimeout,
+		PollInterval:    cfg.PlaybackPollIntervalDuration(),
+		StabilizeWindow: cfg.ConfirmStabilizeWindowDuration(),
 	}
 	if err := sets.Execute(ctx, a, client, opts); err != nil {
 		var te *sets.TimeoutError
@@ -230,7 +232,7 @@ func dispatchAndPrintStatus(ctx context.Context, a spotify.Action, client *spoti
 			return fmt.Errorf("%s: %w", errPrefix, err)
 		}
 	}
-	state, err := client.GetCurrentPlayback(ctx)
+	state, err := client.GetCurrentPlayback(spotify.WithReason(ctx, "Fetching Status to Display"))
 	if err != nil || state == nil {
 		return nil
 	}

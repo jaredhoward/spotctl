@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -89,13 +90,40 @@ func logHTTP(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "[%s] "+format+"\n", append([]any{time.Now().Format(httpTimestampFormat)}, args...)...)
 }
 
+// actionLabels maps the short action keys already passed around internally
+// (used in error messages, e.g. "play request failed: ...") to a
+// plain-language description of the underlying Spotify Web API operation,
+// printed as its own verbose log line ahead of the raw HTTP trace so
+// --verbose output doesn't require guessing what an endpoint does.
+var actionLabels = map[string]string{
+	"play":              "Start/Resume Playback",
+	"pause":             "Pause Playback",
+	"next":              "Skip to Next",
+	"previous":          "Skip to Previous",
+	"shuffle":           "Toggle Shuffle",
+	"repeat":            "Set Repeat Mode",
+	"set volume":        "Set Volume",
+	"transfer playback": "Transfer Playback",
+}
+
 // doRequest sends req via the client's HTTP client. When Verbose is enabled
-// it logs the request method/URL/body and the response status/body to
+// it logs a plain-language label for the operation (from label, if non-empty)
+// followed by the request method/URL/body and the response status/body to
 // stderr; the Authorization header is never logged. The response body is
 // fully read and replaced with a fresh reader so callers can still consume
 // it normally.
-func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
+func (c *Client) doRequest(req *http.Request, label string) (*http.Response, error) {
 	if Verbose {
+		if reason := reasonFromContext(req.Context()); reason != "" {
+			if label != "" {
+				label = reason + ": " + label
+			} else {
+				label = reason
+			}
+		}
+		if label != "" {
+			logHTTP("[%s]", label)
+		}
 		logHTTP("[http] -> %s %s", req.Method, req.URL.String())
 		if req.GetBody != nil {
 			if rc, err := req.GetBody(); err == nil {
@@ -152,7 +180,7 @@ func (c *Client) RawRequest(ctx context.Context, method, path, body string) (int
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequest(req, "Raw API Call")
 	if err != nil {
 		return 0, nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -165,10 +193,15 @@ func (c *Client) RawRequest(ctx context.Context, method, path, body string) (int
 	return resp.StatusCode, respBody, nil
 }
 
-// doExpectSuccess executes req and returns nil on 2xx, or a descriptive error.
-// A 429 response includes the Retry-After value in the error message.
+// doExpectSuccess executes req and returns nil on 2xx, or an *HTTPStatusError
+// describing the failure. A 429 response's Retry-After header, if present,
+// is parsed onto the returned error.
 func (c *Client) doExpectSuccess(req *http.Request, action string) error {
-	resp, err := c.doRequest(req)
+	label := actionLabels[action]
+	if label == "" {
+		label = action
+	}
+	resp, err := c.doRequest(req, label)
 	if err != nil {
 		return fmt.Errorf("%s request failed: %w", action, err)
 	}
@@ -176,14 +209,19 @@ func (c *Client) doExpectSuccess(req *http.Request, action string) error {
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode == http.StatusTooManyRequests {
-			retryAfter := resp.Header.Get("Retry-After")
-			if retryAfter != "" {
-				return fmt.Errorf("%s rate limited (429): retry after %s seconds", action, retryAfter)
-			}
-			return fmt.Errorf("%s rate limited (429)", action)
+		httpErr := &HTTPStatusError{
+			Action:     action,
+			StatusCode: resp.StatusCode,
+			Body:       strings.TrimSpace(string(body)),
 		}
-		return fmt.Errorf("%s returned unexpected status %d: %s", action, resp.StatusCode, strings.TrimSpace(string(body)))
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+				if secs, err := strconv.Atoi(retryAfter); err == nil {
+					httpErr.RetryAfter = time.Duration(secs) * time.Second
+				}
+			}
+		}
+		return httpErr
 	}
 
 	return nil

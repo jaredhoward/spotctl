@@ -42,6 +42,41 @@ func TestPlaybackPollIntervalDurationNegativeFallsBack(t *testing.T) {
 	}
 }
 
+func TestConfirmStabilizeWindowDurationDefault(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.ConfirmStabilizeWindowDuration(); got != DefaultConfirmStabilizeWindow {
+		t.Fatalf("expected default %v, got %v", DefaultConfirmStabilizeWindow, got)
+	}
+}
+
+func TestConfirmStabilizeWindowDurationValid(t *testing.T) {
+	cfg := &Config{ConfirmStabilizeWindow: "500ms"}
+	if got := cfg.ConfirmStabilizeWindowDuration(); got != 500*time.Millisecond {
+		t.Fatalf("expected 500ms, got %v", got)
+	}
+}
+
+func TestConfirmStabilizeWindowDurationInvalidFallsBack(t *testing.T) {
+	cfg := &Config{ConfirmStabilizeWindow: "notaduration"}
+	if got := cfg.ConfirmStabilizeWindowDuration(); got != DefaultConfirmStabilizeWindow {
+		t.Fatalf("expected default on invalid value, got %v", got)
+	}
+}
+
+func TestConfirmStabilizeWindowDurationZeroFallsBack(t *testing.T) {
+	cfg := &Config{ConfirmStabilizeWindow: "0s"}
+	if got := cfg.ConfirmStabilizeWindowDuration(); got != DefaultConfirmStabilizeWindow {
+		t.Fatalf("expected default on zero duration, got %v", got)
+	}
+}
+
+func TestConfirmStabilizeWindowDurationNegativeFallsBack(t *testing.T) {
+	cfg := &Config{ConfirmStabilizeWindow: "-1s"}
+	if got := cfg.ConfirmStabilizeWindowDuration(); got != DefaultConfirmStabilizeWindow {
+		t.Fatalf("expected default on negative duration, got %v", got)
+	}
+}
+
 func TestClientB64(t *testing.T) {
 	cfg := &Config{ClientID: "myclient", ClientSecret: "mysecret"}
 	// base64("myclient:mysecret")
@@ -109,11 +144,12 @@ func TestLoadAndSaveRoundTrip(t *testing.T) {
 
 	level := IntOrTemplate{Value: 60}
 	original := &Config{
-		ClientID:             "id",
-		ClientSecret:         "secret",
-		RefreshToken:         "refresh",
-		RedirectURI:          "https://example.com/callback",
-		PlaybackPollInterval: "1s",
+		ClientID:               "id",
+		ClientSecret:           "secret",
+		RefreshToken:           "refresh",
+		RedirectURI:            "https://example.com/callback",
+		PlaybackPollInterval:   "1s",
+		ConfirmStabilizeWindow: "3s",
 		Sets: map[string]Set{
 			"sleep": {
 				Commands: []Command{
@@ -148,6 +184,9 @@ func TestLoadAndSaveRoundTrip(t *testing.T) {
 	}
 	if loaded.PlaybackPollInterval != original.PlaybackPollInterval {
 		t.Errorf("PlaybackPollInterval mismatch: got %q", loaded.PlaybackPollInterval)
+	}
+	if loaded.ConfirmStabilizeWindow != original.ConfirmStabilizeWindow {
+		t.Errorf("ConfirmStabilizeWindow mismatch: got %q", loaded.ConfirmStabilizeWindow)
 	}
 	sleep, ok := loaded.Sets["sleep"]
 	if !ok {

@@ -15,14 +15,25 @@ const DefaultConfigPath = "./config.yaml"
 
 const DefaultPlaybackPollInterval = 500 * time.Millisecond
 
+// DefaultConfirmStabilizeWindow is how long a confirmed command is re-checked
+// to make sure it holds before Execute declares success (see
+// sets.Execute). Some Spotify Connect devices — notably ones waking from an
+// idle state — report a successful transition and then silently drop a
+// moment later; this window is what catches that. 4s was chosen empirically:
+// live testing against a WiiM/LinkPlay device reproduced a silent session
+// reset landing ~2.07s after confirmation, so the window needs real margin
+// past that to reliably catch it.
+const DefaultConfirmStabilizeWindow = 4 * time.Second
+
 type Config struct {
-	ClientID             string            `yaml:"client_id"`
-	ClientSecret         string            `yaml:"client_secret"`
-	RefreshToken         string            `yaml:"refresh_token"`
-	RedirectURI          string            `yaml:"redirect_uri"`
-	PlaybackPollInterval string            `yaml:"playback_poll_interval,omitempty"`
-	Sets                 map[string]Set    `yaml:"sets,omitempty"`
-	DeviceNames          map[string]string `yaml:"device_names"`
+	ClientID               string            `yaml:"client_id"`
+	ClientSecret           string            `yaml:"client_secret"`
+	RefreshToken           string            `yaml:"refresh_token"`
+	RedirectURI            string            `yaml:"redirect_uri"`
+	PlaybackPollInterval   string            `yaml:"playback_poll_interval,omitempty"`
+	ConfirmStabilizeWindow string            `yaml:"confirm_stabilize_window,omitempty"`
+	Sets                   map[string]Set    `yaml:"sets,omitempty"`
+	DeviceNames            map[string]string `yaml:"device_names"`
 }
 
 // PlaybackPollIntervalDuration returns the configured poll interval, falling
@@ -34,6 +45,20 @@ func (c *Config) PlaybackPollIntervalDuration() time.Duration {
 	d, err := time.ParseDuration(c.PlaybackPollInterval)
 	if err != nil || d <= 0 {
 		return DefaultPlaybackPollInterval
+	}
+	return d
+}
+
+// ConfirmStabilizeWindowDuration returns the configured post-confirm
+// stability window, falling back to DefaultConfirmStabilizeWindow if unset
+// or unparseable.
+func (c *Config) ConfirmStabilizeWindowDuration() time.Duration {
+	if c.ConfirmStabilizeWindow == "" {
+		return DefaultConfirmStabilizeWindow
+	}
+	d, err := time.ParseDuration(c.ConfirmStabilizeWindow)
+	if err != nil || d <= 0 {
+		return DefaultConfirmStabilizeWindow
 	}
 	return d
 }

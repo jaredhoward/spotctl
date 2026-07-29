@@ -20,7 +20,7 @@ func TestPauseCmd_Success(t *testing.T) {
 	}()
 
 	pauseDeviceID = "dev-1"
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 
 	pauseCalled := false
 	pausedState, _ := json.Marshal(spotify.PlaybackState{
@@ -72,7 +72,7 @@ func TestNextCmd_Success(t *testing.T) {
 	}()
 
 	nextDeviceID = "dev-1"
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 
 	nextCalled := false
 	preState, _ := json.Marshal(spotify.PlaybackState{
@@ -130,7 +130,7 @@ func TestPreviousCmd_Success(t *testing.T) {
 	}()
 
 	previousDeviceID = "dev-1"
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 
 	previousCalled := false
 	preState, _ := json.Marshal(spotify.PlaybackState{

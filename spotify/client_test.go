@@ -3,6 +3,7 @@ package spotify
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -55,6 +56,110 @@ func TestDoExpectSuccess_NonTwoXX_IncludesBody(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "400") {
 		t.Errorf("expected status code in error, got: %v", err)
+	}
+}
+
+func TestDoExpectSuccess_ReturnsHTTPStatusError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte("bad gateway"))
+	}))
+	defer server.Close()
+
+	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/play?device_id=device", server.URL), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer t")
+
+	err = client.doExpectSuccess(req, "play")
+	var httpErr *HTTPStatusError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected *HTTPStatusError, got %T: %v", err, err)
+	}
+	if httpErr.StatusCode != http.StatusBadGateway {
+		t.Errorf("expected StatusCode=502, got %d", httpErr.StatusCode)
+	}
+	if httpErr.Body != "bad gateway" {
+		t.Errorf("expected Body=%q, got %q", "bad gateway", httpErr.Body)
+	}
+	if !httpErr.Retryable() {
+		t.Error("expected 502 to be Retryable")
+	}
+}
+
+func TestHTTPStatusError_Retryable(t *testing.T) {
+	cases := []struct {
+		status int
+		want   bool
+	}{
+		{http.StatusBadGateway, true},
+		{http.StatusServiceUnavailable, true},
+		{http.StatusTooManyRequests, true},
+		{http.StatusForbidden, false},
+		{http.StatusUnauthorized, false},
+		{http.StatusNotFound, false},
+		{http.StatusInternalServerError, false},
+	}
+	for _, tc := range cases {
+		e := &HTTPStatusError{StatusCode: tc.status}
+		if got := e.Retryable(); got != tc.want {
+			t.Errorf("status %d: Retryable() = %v, want %v", tc.status, got, tc.want)
+		}
+	}
+}
+
+func TestDoExpectSuccess_429ParsesRetryAfter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/play?device_id=device", server.URL), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer t")
+
+	err = client.doExpectSuccess(req, "play")
+	var httpErr *HTTPStatusError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected *HTTPStatusError, got %T: %v", err, err)
+	}
+	if httpErr.RetryAfter != 30*time.Second {
+		t.Errorf("expected RetryAfter=30s, got %s", httpErr.RetryAfter)
+	}
+	if !strings.Contains(err.Error(), "retry after 30s") {
+		t.Errorf("expected Retry-After in error message, got: %v", err)
+	}
+}
+
+func TestDoExpectSuccess_429WithoutRetryAfter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/play?device_id=device", server.URL), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer t")
+
+	err = client.doExpectSuccess(req, "play")
+	var httpErr *HTTPStatusError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected *HTTPStatusError, got %T: %v", err, err)
+	}
+	if httpErr.RetryAfter != 0 {
+		t.Errorf("expected RetryAfter=0 when header absent, got %s", httpErr.RetryAfter)
+	}
+	if !httpErr.Retryable() {
+		t.Error("expected 429 to be Retryable even without Retry-After")
 	}
 }
 

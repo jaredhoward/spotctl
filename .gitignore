@@ -15,3 +15,6 @@ deploy.sh
 # Go
 *.test
 *.out
+
+# Local --verbose test logs (tee'd during manual live testing)
+play.log

@@ -21,7 +21,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	playback, err := client.GetCurrentPlayback(cmdCtx(cmd))
+	playback, err := client.GetCurrentPlayback(spotify.WithReason(cmdCtx(cmd), "Requested Command"))
 	if err != nil {
 		return fmt.Errorf("failed to get current playback: %w", err)
 	}

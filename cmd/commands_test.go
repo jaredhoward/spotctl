@@ -57,7 +57,7 @@ func TestPlayCmdRunE_NoDevice(t *testing.T) {
 	}()
 
 	playDeviceID = ""
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 	resetPlayCmdFlags(t)
 
 	playCalled := false
@@ -105,7 +105,7 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 	}()
 
 	playDeviceID = "device-1"
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 	resetPlayCmdFlags(t)
 
 	playCalled := false
@@ -114,6 +114,11 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/devices":
+			// Play.Dispatch fetches the device list (diagnostics only)
+			// before deciding whether to wake the target device.
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"devices":[]}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/":
 			w.Header().Set("Content-Type", "application/json")
 			if playCalled {
@@ -121,6 +126,10 @@ func TestPlayCmdRunE_WithDevice(t *testing.T) {
 			} else {
 				w.Write(preState)
 			}
+		case r.Method == http.MethodPut && r.URL.Path == "/":
+			// Play.Dispatch wakes the target device with a transfer call
+			// before playing.
+			w.WriteHeader(http.StatusNoContent)
 		case r.Method == http.MethodPut && r.URL.Path == "/play":
 			playCalled = true
 			if r.URL.Query().Get("device_id") != "device-1" {
@@ -167,7 +176,7 @@ func TestTransferCmdRunE_Success(t *testing.T) {
 
 	transferDeviceID = "device-1"
 	transferPlay = true
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 
 	transferCalled := false
 	postState, _ := json.Marshal(spotify.PlaybackState{
@@ -248,7 +257,7 @@ func TestVolumeCmdRunE_Success(t *testing.T) {
 	if err := volumeCmd.Flags().Set("level", "42"); err != nil {
 		t.Fatal(err)
 	}
-	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", ConfirmStabilizeWindow: "5ms", PlaybackPollInterval: "5ms"})
 
 	volumeCalled := false
 	postState, _ := json.Marshal(spotify.PlaybackState{
