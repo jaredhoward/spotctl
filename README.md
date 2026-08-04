@@ -108,6 +108,7 @@ device_names:
 | `spotctl transfer` | Transfer playback to a Spotify Connect device |
 | `spotctl devices` | List available Spotify Connect devices |
 | `spotctl status` | Show current Spotify playback status |
+| `spotctl recent` | Show recently played tracks |
 | `spotctl setup` | Interactive setup and OAuth flow |
 | `spotctl version` | Print the version |
 | `spotctl call <path> [body]` | Call an arbitrary Spotify Web API endpoint directly, bypassing all of spotctl's action/confirm logic |
@@ -146,6 +147,14 @@ spotctl repeat --device DEVICE_ID --state context --config ./config.yaml
 spotctl repeat --device DEVICE_ID --state off --config ./config.yaml
 spotctl volume --device DEVICE_ID --level 50 --config ./config.yaml
 spotctl transfer --device DEVICE_ID --play --config ./config.yaml
+```
+
+Recently played tracks:
+```bash
+spotctl recent --config ./config.yaml
+spotctl recent --limit 5 --config ./config.yaml
+spotctl recent --after "2026-08-04T03:10:08-06:00" --config ./config.yaml
+spotctl recent --before "2026-08-04T05:00:00-06:00" --config ./config.yaml
 ```
 
 Raw API access (bypasses confirmation/polling entirely — useful for debugging, or hitting an endpoint spotctl doesn't wrap):
@@ -454,6 +463,16 @@ Only one of `--uri`, `--playlist`, `--track`, `--album`, or `--artist` may be sp
 |---|---|
 | `--device <id>` | Spotify device ID to transfer playback to (required) |
 | `--play` | Start playback immediately after transfer — see [`transfer` vs. `play` without a URI](#transfer-vs-play-without-a-uri) |
+
+### `recent`
+
+| Flag | Default | Description |
+|---|---|---|
+| `--limit <1-50>` | `20` | Number of recently played tracks to show |
+| `--after <time>` | — | Only show tracks played after this time. Accepts RFC3339 (`2026-08-04T03:10:08-06:00`) or `2006-01-02 15:04:05`/`2006-01-02T15:04:05` (parsed in local time). Mutually exclusive with `--before` |
+| `--before <time>` | — | Only show tracks played before this time. Same accepted formats as `--after`. Mutually exclusive with `--after` |
+
+Output is newest-first, same as Spotify returns it — so with `--after`, the *last* line printed is the first track played after that time.
 
 ### `call`
 
