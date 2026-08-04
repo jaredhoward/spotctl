@@ -467,6 +467,9 @@ Only one of `--uri`, `--playlist`, `--track`, `--album`, or `--artist` may be sp
 | Flag | Default | Description |
 |---|---|---|
 | `--limit <1-50>` | `20` | Number of recently played tracks to show |
+| `--after <time>` | — | Only show tracks played after this time. Accepts RFC3339 (`2026-08-04T03:10:08-06:00`) or `2006-01-02 15:04:05`/`2006-01-02T15:04:05` (parsed in local time) |
+
+Output is newest-first, same as Spotify returns it — so with `--after`, the *last* line printed is the first track played after that time.
 
 ### `call`
 

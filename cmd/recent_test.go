@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -99,5 +100,65 @@ func TestRunRecent_LimitFlag(t *testing.T) {
 	}
 	if gotLimit != "5" {
 		t.Errorf("expected limit=5 sent to Spotify, got %q", gotLimit)
+	}
+}
+
+func TestRunRecent_AfterFlag(t *testing.T) {
+	oldConfigPath := configPath
+	t.Cleanup(func() { configPath = oldConfigPath })
+	oldAfter := recentAfter
+	t.Cleanup(func() { recentAfter = oldAfter })
+	recentAfter = "2026-08-04T03:10:08-06:00"
+
+	want, err := time.Parse(time.RFC3339, recentAfter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var gotAfter string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAfter = r.URL.Query().Get("after")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(spotify.RecentlyPlayedResponse{})
+	}))
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	wireClient(t, srv)
+	t.Cleanup(srv.Close)
+
+	if err := recentCmd.RunE(recentCmd, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotAfter != strconv.FormatInt(want.UnixMilli(), 10) {
+		t.Errorf("expected after=%d, got %q", want.UnixMilli(), gotAfter)
+	}
+}
+
+func TestRunRecent_InvalidAfter(t *testing.T) {
+	oldAfter := recentAfter
+	t.Cleanup(func() { recentAfter = oldAfter })
+	recentAfter = "not-a-time"
+
+	if err := recentCmd.RunE(recentCmd, nil); err == nil {
+		t.Fatal("expected error for invalid --after value")
+	}
+}
+
+func TestParseAfter(t *testing.T) {
+	cases := []string{
+		"2026-08-04T03:10:08-06:00",
+		"2026-08-04T03:10:08",
+		"2026-08-04 03:10:08",
+		"2026-08-04",
+	}
+	for _, s := range cases {
+		if _, err := parseAfter(s); err != nil {
+			t.Errorf("parseAfter(%q): unexpected error: %v", s, err)
+		}
+	}
+	if _, err := parseAfter(""); err != nil {
+		t.Errorf("parseAfter(\"\"): unexpected error: %v", err)
+	}
+	if _, err := parseAfter("garbage"); err == nil {
+		t.Error("parseAfter(\"garbage\"): expected error")
 	}
 }

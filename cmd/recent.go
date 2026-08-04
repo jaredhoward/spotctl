@@ -2,12 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/jaredhoward/spotctl/spotify"
 	"github.com/spf13/cobra"
 )
 
-var recentLimit int
+var (
+	recentLimit int
+	recentAfter string
+)
 
 var recentCmd = &cobra.Command{
 	Use:   "recent",
@@ -15,13 +19,39 @@ var recentCmd = &cobra.Command{
 	RunE:  runRecent,
 }
 
+// afterTimeLayouts are the formats --after accepts, tried in order. All but
+// time.RFC3339 have no zone offset and are parsed in Local time.
+var afterTimeLayouts = []string{
+	time.RFC3339,
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05",
+	"2006-01-02",
+}
+
+func parseAfter(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, nil
+	}
+	for _, layout := range afterTimeLayouts {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid --after %q: expected RFC3339 (2026-08-04T03:10:08-06:00) or 2006-01-02[ T]15:04:05", s)
+}
+
 func runRecent(cmd *cobra.Command, args []string) error {
+	after, err := parseAfter(recentAfter)
+	if err != nil {
+		return err
+	}
+
 	client, err := newClientFromConfig(cmdCtx(cmd))
 	if err != nil {
 		return err
 	}
 
-	recent, err := client.GetRecentlyPlayed(spotify.WithReason(cmdCtx(cmd), "Requested Command"), recentLimit)
+	recent, err := client.GetRecentlyPlayed(spotify.WithReason(cmdCtx(cmd), "Requested Command"), recentLimit, after)
 	if err != nil {
 		return fmt.Errorf("failed to get recently played tracks: %w", err)
 	}
@@ -47,5 +77,6 @@ func runRecent(cmd *cobra.Command, args []string) error {
 
 func init() {
 	recentCmd.Flags().IntVar(&recentLimit, "limit", 20, "number of tracks to show (1-50)")
+	recentCmd.Flags().StringVar(&recentAfter, "after", "", "only show tracks played after this time (RFC3339 or 2006-01-02 15:04:05, local time)")
 	rootCmd.AddCommand(recentCmd)
 }

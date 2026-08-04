@@ -27,15 +27,25 @@ type RecentlyPlayedResponse struct {
 
 // GetRecentlyPlayed fetches the user's most recently played tracks. limit
 // caps the number of items Spotify returns (valid range 1-50); 0 leaves the
-// query param unset so Spotify applies its own default (20).
-func (c *Client) GetRecentlyPlayed(ctx context.Context, limit int) (*RecentlyPlayedResponse, error) {
+// query param unset so Spotify applies its own default (20). after, if
+// non-zero, restricts results to items played after that instant (Spotify's
+// "after" cursor) — items are still returned newest-first, so the oldest
+// (i.e. first-played) item in the response is the last one in the slice.
+func (c *Client) GetRecentlyPlayed(ctx context.Context, limit int, after time.Time) (*RecentlyPlayedResponse, error) {
 	if limit < 0 || limit > 50 {
 		return nil, fmt.Errorf("invalid limit %d: must be 0–50", limit)
 	}
 
-	var extra []url.Values
+	params := url.Values{}
 	if limit > 0 {
-		extra = append(extra, url.Values{"limit": {strconv.Itoa(limit)}})
+		params.Set("limit", strconv.Itoa(limit))
+	}
+	if !after.IsZero() {
+		params.Set("after", strconv.FormatInt(after.UnixMilli(), 10))
+	}
+	var extra []url.Values
+	if len(params) > 0 {
+		extra = append(extra, params)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
