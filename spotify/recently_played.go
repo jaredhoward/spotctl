@@ -27,13 +27,18 @@ type RecentlyPlayedResponse struct {
 
 // GetRecentlyPlayed fetches the user's most recently played tracks. limit
 // caps the number of items Spotify returns (valid range 1-50); 0 leaves the
-// query param unset so Spotify applies its own default (20). after, if
-// non-zero, restricts results to items played after that instant (Spotify's
-// "after" cursor) — items are still returned newest-first, so the oldest
-// (i.e. first-played) item in the response is the last one in the slice.
-func (c *Client) GetRecentlyPlayed(ctx context.Context, limit int, after time.Time) (*RecentlyPlayedResponse, error) {
+// query param unset so Spotify applies its own default (20). after and
+// before, if non-zero, restrict results to items played after/before that
+// instant (Spotify's "after"/"before" cursors) — only one of the two may be
+// set, per Spotify's API. Items are still returned newest-first, so with
+// after set, the oldest (i.e. first-played) item in the response is the
+// last one in the slice.
+func (c *Client) GetRecentlyPlayed(ctx context.Context, limit int, after, before time.Time) (*RecentlyPlayedResponse, error) {
 	if limit < 0 || limit > 50 {
 		return nil, fmt.Errorf("invalid limit %d: must be 0–50", limit)
+	}
+	if !after.IsZero() && !before.IsZero() {
+		return nil, fmt.Errorf("after and before are mutually exclusive: only one may be set")
 	}
 
 	params := url.Values{}
@@ -42,6 +47,9 @@ func (c *Client) GetRecentlyPlayed(ctx context.Context, limit int, after time.Ti
 	}
 	if !after.IsZero() {
 		params.Set("after", strconv.FormatInt(after.UnixMilli(), 10))
+	}
+	if !before.IsZero() {
+		params.Set("before", strconv.FormatInt(before.UnixMilli(), 10))
 	}
 	var extra []url.Values
 	if len(params) > 0 {

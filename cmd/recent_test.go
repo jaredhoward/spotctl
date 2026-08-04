@@ -143,7 +143,58 @@ func TestRunRecent_InvalidAfter(t *testing.T) {
 	}
 }
 
-func TestParseAfter(t *testing.T) {
+func TestRunRecent_BeforeFlag(t *testing.T) {
+	oldConfigPath := configPath
+	t.Cleanup(func() { configPath = oldConfigPath })
+	oldBefore := recentBefore
+	t.Cleanup(func() { recentBefore = oldBefore })
+	recentBefore = "2026-08-04T05:00:00-06:00"
+
+	want, err := time.Parse(time.RFC3339, recentBefore)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var gotBefore string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBefore = r.URL.Query().Get("before")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(spotify.RecentlyPlayedResponse{})
+	}))
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+	wireClient(t, srv)
+	t.Cleanup(srv.Close)
+
+	if err := recentCmd.RunE(recentCmd, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotBefore != strconv.FormatInt(want.UnixMilli(), 10) {
+		t.Errorf("expected before=%d, got %q", want.UnixMilli(), gotBefore)
+	}
+}
+
+func TestRunRecent_InvalidBefore(t *testing.T) {
+	oldBefore := recentBefore
+	t.Cleanup(func() { recentBefore = oldBefore })
+	recentBefore = "not-a-time"
+
+	if err := recentCmd.RunE(recentCmd, nil); err == nil {
+		t.Fatal("expected error for invalid --before value")
+	}
+}
+
+func TestRunRecent_AfterAndBeforeMutuallyExclusive(t *testing.T) {
+	oldAfter, oldBefore := recentAfter, recentBefore
+	t.Cleanup(func() { recentAfter, recentBefore = oldAfter, oldBefore })
+	recentAfter = "2026-08-04T03:00:00-06:00"
+	recentBefore = "2026-08-04T05:00:00-06:00"
+
+	if err := recentCmd.RunE(recentCmd, nil); err == nil {
+		t.Fatal("expected error when both --after and --before are set")
+	}
+}
+
+func TestParseRecentTime(t *testing.T) {
 	cases := []string{
 		"2026-08-04T03:10:08-06:00",
 		"2026-08-04T03:10:08",
@@ -151,14 +202,14 @@ func TestParseAfter(t *testing.T) {
 		"2026-08-04",
 	}
 	for _, s := range cases {
-		if _, err := parseAfter(s); err != nil {
-			t.Errorf("parseAfter(%q): unexpected error: %v", s, err)
+		if _, err := parseRecentTime("after", s); err != nil {
+			t.Errorf("parseRecentTime(%q): unexpected error: %v", s, err)
 		}
 	}
-	if _, err := parseAfter(""); err != nil {
-		t.Errorf("parseAfter(\"\"): unexpected error: %v", err)
+	if _, err := parseRecentTime("after", ""); err != nil {
+		t.Errorf("parseRecentTime(\"\"): unexpected error: %v", err)
 	}
-	if _, err := parseAfter("garbage"); err == nil {
-		t.Error("parseAfter(\"garbage\"): expected error")
+	if _, err := parseRecentTime("after", "garbage"); err == nil {
+		t.Error("parseRecentTime(\"garbage\"): expected error")
 	}
 }

@@ -34,7 +34,7 @@ func TestGetRecentlyPlayedSuccess(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
-	recent, err := client.GetRecentlyPlayed(context.Background(), 5, time.Time{})
+	recent, err := client.GetRecentlyPlayed(context.Background(), 5, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestGetRecentlyPlayedNoLimit(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
-	if _, err := client.GetRecentlyPlayed(context.Background(), 0, time.Time{}); err != nil {
+	if _, err := client.GetRecentlyPlayed(context.Background(), 0, time.Time{}, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -74,17 +74,46 @@ func TestGetRecentlyPlayedAfter(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
-	if _, err := client.GetRecentlyPlayed(context.Background(), 0, after); err != nil {
+	if _, err := client.GetRecentlyPlayed(context.Background(), 0, after, time.Time{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGetRecentlyPlayedBefore(t *testing.T) {
+	before := time.Date(2026, 8, 4, 5, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("after") {
+			t.Fatalf("expected no after param, got %q", r.URL.RawQuery)
+		}
+		if got := r.URL.Query().Get("before"); got != strconv.FormatInt(before.UnixMilli(), 10) {
+			t.Fatalf("expected before=%d, got %q", before.UnixMilli(), got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(RecentlyPlayedResponse{})
+	}))
+	defer server.Close()
+
+	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
+	if _, err := client.GetRecentlyPlayed(context.Background(), 0, time.Time{}, before); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetRecentlyPlayedAfterAndBeforeMutuallyExclusive(t *testing.T) {
+	client := &Client{accessToken: "t", httpClient: http.DefaultClient, urlPlayer: "http://example.invalid"}
+	after := time.Date(2026, 8, 4, 3, 0, 0, 0, time.UTC)
+	before := time.Date(2026, 8, 4, 5, 0, 0, 0, time.UTC)
+	if _, err := client.GetRecentlyPlayed(context.Background(), 0, after, before); err == nil {
+		t.Fatal("expected error when both after and before are set")
 	}
 }
 
 func TestGetRecentlyPlayedInvalidLimit(t *testing.T) {
 	client := &Client{accessToken: "t", httpClient: http.DefaultClient, urlPlayer: "http://example.invalid"}
-	if _, err := client.GetRecentlyPlayed(context.Background(), 51, time.Time{}); err == nil {
+	if _, err := client.GetRecentlyPlayed(context.Background(), 51, time.Time{}, time.Time{}); err == nil {
 		t.Fatal("expected error for limit > 50")
 	}
-	if _, err := client.GetRecentlyPlayed(context.Background(), -1, time.Time{}); err == nil {
+	if _, err := client.GetRecentlyPlayed(context.Background(), -1, time.Time{}, time.Time{}); err == nil {
 		t.Fatal("expected error for negative limit")
 	}
 }
@@ -96,7 +125,7 @@ func TestGetRecentlyPlayedErrorStatus(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
-	if _, err := client.GetRecentlyPlayed(context.Background(), 0, time.Time{}); err == nil {
+	if _, err := client.GetRecentlyPlayed(context.Background(), 0, time.Time{}, time.Time{}); err == nil {
 		t.Fatal("expected error for non-200 response")
 	}
 }
@@ -110,7 +139,7 @@ func TestGetRecentlyPlayedDecodeError(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{accessToken: "t", httpClient: server.Client(), urlPlayer: server.URL}
-	if _, err := client.GetRecentlyPlayed(context.Background(), 0, time.Time{}); err == nil {
+	if _, err := client.GetRecentlyPlayed(context.Background(), 0, time.Time{}, time.Time{}); err == nil {
 		t.Fatal("expected decode error")
 	}
 }
