@@ -627,5 +627,19 @@ func (p *CommandParams) InterpolateParams(resolved map[string]string) (CommandPa
 		}
 		out.Enabled = &BoolOrTemplate{Value: b}
 	}
+	// Interpolate the inline Forwarded map (e.g. run_set's extra params, like
+	// `shuffle: '{{ shuffle }}'`) so placeholders are resolved before being
+	// passed on as args to the target set, rather than forwarded verbatim.
+	if len(p.Forwarded) > 0 {
+		forwarded := make(map[string]string, len(p.Forwarded))
+		for k, v := range p.Forwarded {
+			val, err := interpolateString(v, resolved)
+			if err != nil {
+				return CommandParams{}, err
+			}
+			forwarded[k] = val
+		}
+		out.Forwarded = forwarded
+	}
 	return out, nil
 }
