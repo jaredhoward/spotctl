@@ -705,6 +705,45 @@ func TestInterpolateParams(t *testing.T) {
 			t.Errorf("Level: expected 42, got %v", got.Level)
 		}
 	})
+
+	t.Run("forwarded map interpolated", func(t *testing.T) {
+		p := CommandParams{
+			Set:       "child_set",
+			Forwarded: map[string]string{"shuffle": "{{ shuffle }}", "volume": "{{ volume }}"},
+		}
+		got, err := p.InterpolateParams(map[string]string{"shuffle": "true", "volume": "35"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Forwarded["shuffle"] != "true" {
+			t.Errorf("Forwarded[shuffle]: got %q", got.Forwarded["shuffle"])
+		}
+		if got.Forwarded["volume"] != "35" {
+			t.Errorf("Forwarded[volume]: got %q", got.Forwarded["volume"])
+		}
+	})
+
+	t.Run("forwarded map unknown key returns error", func(t *testing.T) {
+		p := CommandParams{Forwarded: map[string]string{"shuffle": "{{ missing }}"}}
+		_, err := p.InterpolateParams(map[string]string{})
+		if err == nil {
+			t.Fatal("expected error for unknown placeholder key in forwarded map")
+		}
+		if !strings.Contains(err.Error(), "missing") {
+			t.Errorf("expected error to mention key name, got %v", err)
+		}
+	})
+
+	t.Run("nil forwarded map stays nil", func(t *testing.T) {
+		p := CommandParams{URI: "{{ uri }}"}
+		got, err := p.InterpolateParams(map[string]string{"uri": "spotify:track:x"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Forwarded != nil {
+			t.Errorf("Forwarded: expected nil, got %v", got.Forwarded)
+		}
+	})
 }
 
 // ----- ResolvedDeviceID ------------------------------------------------------
