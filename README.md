@@ -561,3 +561,7 @@ This works well for devices that Home Assistant cannot control directly. When HA
 ## Security
 
 Your `config.yaml` will contain sensitive credentials and should be excluded from version control via `.gitignore`. Never commit it to a public repository.
+
+## License
+
+[MIT](LICENSE)
