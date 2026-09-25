@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -24,9 +25,10 @@ doesn't have a dedicated command for.
   spotctl call /v1/me/player
 
 [body], if given, is sent as the raw request body with
-Content-Type: application/json. The response status and body are always
-printed, even on a non-2xx response, so you can see exactly what the API
-said.`,
+Content-Type: application/json. The response body goes to stdout and the
+"Status: <code>" line goes to stderr, so the body can be piped straight
+into a tool like jq. Both are printed even on a non-2xx response, so you
+can see exactly what the API said.`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runCall,
 }
@@ -48,7 +50,7 @@ func runCall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("call failed: %w", err)
 	}
 
-	fmt.Printf("Status: %d\n", status)
+	fmt.Fprintf(os.Stderr, "Status: %d\n", status)
 	if len(respBody) > 0 {
 		fmt.Println(string(respBody))
 	}

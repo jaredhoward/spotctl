@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const scopes = "user-modify-playback-state user-read-playback-state"
+const scopes = "user-modify-playback-state user-read-playback-state playlist-read-private user-library-read"
 
 // setupStdin is the reader used by runSetup for interactive prompts and the
 // OAuth redirect URL. Tests replace it to avoid reading from os.Stdin.

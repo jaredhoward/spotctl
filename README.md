@@ -109,6 +109,9 @@ device_names:
 | `spotctl devices` | List available Spotify Connect devices |
 | `spotctl status` | Show current Spotify playback status |
 | `spotctl recent` | Show recently played tracks |
+| `spotctl playlists` | List the playlists in your library (owned and followed) |
+| `spotctl playlist <id\|uri\|url>` | Show the items in a playlist |
+| `spotctl liked` | Show your Liked Songs |
 | `spotctl setup` | Interactive setup and OAuth flow |
 | `spotctl version` | Print the version |
 | `spotctl call <path> [body]` | Call an arbitrary Spotify Web API endpoint directly, bypassing all of spotctl's action/confirm logic |
@@ -157,9 +160,26 @@ spotctl recent --after "2026-08-04T03:10:08-06:00" --config ./config.yaml
 spotctl recent --before "2026-08-04T05:00:00-06:00" --config ./config.yaml
 ```
 
+Playlists:
+```bash
+spotctl playlists --config ./config.yaml
+spotctl playlists --limit 50 --offset 50 --config ./config.yaml
+spotctl playlists --readable --config ./config.yaml
+spotctl playlist 37i9dQZF1DXcBWIGoYBM5M --config ./config.yaml
+spotctl playlist spotify:playlist:37i9dQZF1DXcBWIGoYBM5M --limit 50 --config ./config.yaml
+```
+
+Liked Songs:
+```bash
+spotctl liked --config ./config.yaml
+spotctl liked --limit 50 --offset 50 --config ./config.yaml
+spotctl liked --all --json --config ./config.yaml
+```
+
 Raw API access (bypasses confirmation/polling entirely — useful for debugging, or hitting an endpoint spotctl doesn't wrap):
 ```bash
 spotctl call /v1/me/player
+spotctl call /v1/me/player | jq .device.name
 spotctl call -X PUT '/v1/me/player/play?device_id=DEVICE_ID' '{"context_uri":"spotify:playlist:PLAYLIST_ID"}'
 ```
 
@@ -474,6 +494,56 @@ Only one of `--uri`, `--playlist`, `--track`, `--album`, or `--artist` may be sp
 
 Output is newest-first, same as Spotify returns it — so with `--after`, the *last* line printed is the first track played after that time.
 
+### `playlists`
+
+| Flag | Default | Description |
+|---|---|---|
+| `--limit <1-50>` | `20` | Number of playlists to show |
+| `--offset <n>` | `0` | Index of the first playlist to show |
+| `--all` | off | Show every playlist, not one page. Not combinable with `--limit`/`--offset` |
+| `--readable` | off | Only playlists whose items you can read (yours, or collaborative). Fetches everything, so not combinable with `--limit`/`--offset`/`--all` |
+| `--json` | off | Print JSON to stdout instead of text (see [List output and `--json`](#list-output-and---json)) |
+
+Lists your whole library — playlists you own *and* ones you follow from other people — printing name, owner, item count, and the `spotify:playlist:` URI for each. Playlists you don't own are marked `(followed)`, or `(collaborative)` if they're collaborative. Followed playlists are listed but their items aren't readable (see [`playlist`](#playlist)); `--readable` hides them. Telling yours from followed costs one extra request for your user ID; if that lookup fails you get a warning on stderr and no markers (but `--readable` fails, since it can't filter without it).
+
+### `playlist`
+
+Takes one argument: a playlist ID, a `spotify:playlist:<id>` URI, or an `open.spotify.com/playlist/<id>` link (the URIs printed by `spotctl playlists` and `spotctl recent` work as-is).
+
+| Flag | Default | Description |
+|---|---|---|
+| `--limit <1-50>` | `20` | Number of items to show |
+| `--offset <n>` | `0` | Index of the first item to show |
+| `--all` | off | Show every item, not one page. Not combinable with `--limit`/`--offset` |
+| `--json` | off | Print JSON to stdout instead of text |
+
+Prints each item's position, name, artists, and track URI. Spotify only returns items for playlists you **own or collaborate on** — anything else (including Spotify's editorial playlists) is a `403`. Items Spotify returns as unavailable print as `(unavailable)`.
+
+Both playlist commands require the `playlist-read-private` scope. If you set up spotctl before these commands existed, your refresh token doesn't have it (a refresh token keeps the scopes it was issued with) — re-run `spotctl setup` and you'll get a `403` with a hint until you do.
+
+### `liked`
+
+| Flag | Default | Description |
+|---|---|---|
+| `--limit <1-50>` | `20` | Number of songs to show |
+| `--offset <n>` | `0` | Index of the first song to show |
+| `--all` | off | Show every song, not one page. Not combinable with `--limit`/`--offset` |
+| `--json` | off | Print JSON to stdout instead of text |
+
+Prints your Liked Songs (saved tracks), most recently liked first, in the same format as `playlist`. Liked Songs is not a playlist in Spotify's API, so it never appears in `spotctl playlists` and can't be read with `spotctl playlist`. Requires the `user-library-read` scope — re-run `spotctl setup` if you get a `403`.
+
+### List output and `--json`
+
+`playlists`, `playlist`, and `liked` share their paging and output flags. Without `--all`, a page is shown and a `Showing 1–20 of 57. Use --offset 20 for more (or --all).` hint goes to **stderr**, so piped stdout stays clean. With `--json`, stdout is a JSON array (an empty list prints `[]`) that you can pipe to `jq`:
+
+```bash
+spotctl playlists --all --json | jq -r '.[] | select(.owned) | .name'
+spotctl liked --all --json | jq -r '.[] | "\(.artists[0]) - \(.name)"'
+```
+
+`playlists` rows: `id`, `uri`, `name`, `owner_id`, `owner_name`, `owned` (omitted if your user ID couldn't be looked up, rather than reported as false), `collaborative`, `item_count`.
+`playlist` and `liked` rows: `position` (1-based in the whole list, matching the text output), `uri`, `name`, `artists` (array of names), `duration_ms`, `added_at` (RFC 3339), plus `local: true` for a local file and `unavailable: true` when Spotify returned null for the entry (the other fields are then absent).
+
 ### `call`
 
 | Flag | Description |
@@ -482,7 +552,9 @@ Output is newest-first, same as Spotify returns it — so with `--after`, the *l
 | `[body]` | Optional raw request body, sent with `Content-Type: application/json` |
 | `--method`, `-X` | HTTP method (default `GET`) |
 
-Always prints `Status: <code>` plus the raw response body, even on a non-2xx response, so you can see exactly what the API said. Exits non-zero on a non-2xx status.
+The response body goes to **stdout** and a `Status: <code>` line goes to **stderr**, so the body pipes straight into a tool like `jq`. Both are printed even on a non-2xx response, so you can see exactly what the API said. Exits non-zero on a non-2xx status.
+
+> **Changed in v1.1.0:** the `Status:` line used to be printed on stdout ahead of the body. If a script parsed it from stdout, read stderr instead (or use the exit code).
 
 ## `transfer` vs. `play` without a URI
 
@@ -507,6 +579,8 @@ spotctl setup --config ./config.yaml
 ```
 
 Existing sets and device names will be preserved and credentials pre-filled for easy updating.
+
+Re-running setup is also how you pick up newly required Spotify scopes (`playlist-read-private` for `spotctl playlists` / `spotctl playlist`, `user-library-read` for `spotctl liked`) — a refresh token keeps the scopes it was originally issued with.
 
 ## Home Assistant Integration
 

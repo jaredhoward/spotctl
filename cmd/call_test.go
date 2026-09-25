@@ -35,13 +35,17 @@ func TestCallCmdRunE_DefaultMethodGET(t *testing.T) {
 	cleanup := wireClient(t, srv)
 	defer cleanup()
 
-	out := captureOutput(t, func() {
+	stdout, stderr := captureBoth(t, func() {
 		if err := callCmd.RunE(callCmd, []string{"/v1/me"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-	if !strings.Contains(out, "Status: 200") || !strings.Contains(out, `{"id":"me"}`) {
-		t.Errorf("unexpected output: %q", out)
+	// stdout is only the body, so it pipes cleanly; the status goes to stderr.
+	if strings.TrimSpace(stdout) != `{"id":"me"}` {
+		t.Errorf("stdout should be only the response body, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "Status: 200") {
+		t.Errorf("expected the status on stderr, got %q", stderr)
 	}
 }
 
@@ -73,7 +77,7 @@ func TestCallCmdRunE_PUTWithBody(t *testing.T) {
 	cleanup := wireClient(t, srv)
 	defer cleanup()
 
-	out := captureOutput(t, func() {
+	stdout, stderr := captureBoth(t, func() {
 		err := callCmd.RunE(callCmd, []string{
 			"/v1/me/player/play?device_id=dev1",
 			`{"context_uri":"spotify:playlist:abc"}`,
@@ -82,8 +86,11 @@ func TestCallCmdRunE_PUTWithBody(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-	if !strings.Contains(out, "Status: 204") {
-		t.Errorf("unexpected output: %q", out)
+	if !strings.Contains(stderr, "Status: 204") {
+		t.Errorf("expected the status on stderr, got %q", stderr)
+	}
+	if stdout != "" {
+		t.Errorf("an empty response body should print nothing on stdout, got %q", stdout)
 	}
 }
 
@@ -107,14 +114,14 @@ func TestCallCmdRunE_NonSuccessStatus_ReturnsErrorButPrintsBody(t *testing.T) {
 	defer cleanup()
 
 	var runErr error
-	out := captureOutput(t, func() {
+	stdout, stderr := captureBoth(t, func() {
 		runErr = callCmd.RunE(callCmd, []string{"/v1/whatever"})
 	})
 	if runErr == nil || !strings.Contains(runErr.Error(), "400") {
 		t.Fatalf("expected an error mentioning the 400 status, got %v", runErr)
 	}
-	if !strings.Contains(out, "Status: 400") || !strings.Contains(out, "bad request") {
-		t.Errorf("expected status/body to still be printed, got %q", out)
+	if !strings.Contains(stderr, "Status: 400") || !strings.Contains(stdout, "bad request") {
+		t.Errorf("expected the status on stderr and the body on stdout, got stderr=%q stdout=%q", stderr, stdout)
 	}
 }
 
