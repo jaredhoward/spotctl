@@ -7,10 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	likedLimit  int
-	likedOffset int
-)
+var likedFlags listFlags
 
 const likedHint = "run 'spotctl setup' to grant library access if you haven't since upgrading"
 
@@ -26,30 +23,48 @@ and can't be read with 'spotctl playlist'.`,
 }
 
 func runLiked(cmd *cobra.Command, args []string) error {
+	f := likedFlags
+	if f.all {
+		if err := rejectPaging(cmd, "--all"); err != nil {
+			return err
+		}
+	}
+
 	client, err := newClientFromConfig(cmdCtx(cmd))
 	if err != nil {
 		return err
 	}
+	ctx := spotify.WithReason(cmdCtx(cmd), "Requested Command")
 
-	page, err := client.GetSavedTracks(spotify.WithReason(cmdCtx(cmd), "Requested Command"), likedLimit, likedOffset)
+	var entries []trackEntry
+	var offset, total int
+	if f.all {
+		var saved []spotify.SavedTrack
+		if saved, err = client.GetAllSavedTracks(ctx); err == nil {
+			entries = savedEntries(saved)
+			total = len(saved)
+		}
+	} else {
+		var page *spotify.Page[spotify.SavedTrack]
+		if page, err = client.GetSavedTracks(ctx, f.limit, f.offset); err == nil {
+			entries, offset, total = savedEntries(page.Items), page.Offset, page.Total
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("failed to get liked songs: %w", accessHint(err, likedHint))
 	}
+	return emitTracks(entries, offset, total, f, "No liked songs found.")
+}
 
-	if len(page.Items) == 0 {
-		fmt.Println("No liked songs found.")
-		return nil
+func savedEntries(saved []spotify.SavedTrack) []trackEntry {
+	entries := make([]trackEntry, len(saved))
+	for i, s := range saved {
+		entries[i] = trackEntry{track: s.Track, addedAt: s.AddedAt}
 	}
-
-	for i, entry := range page.Items {
-		printTrack(page.Offset+i+1, entry.Track)
-	}
-	printMoreHint(page.Offset, len(page.Items), page.Total)
-	return nil
+	return entries
 }
 
 func init() {
-	likedCmd.Flags().IntVar(&likedLimit, "limit", 20, "number of songs to show (1-50)")
-	likedCmd.Flags().IntVar(&likedOffset, "offset", 0, "index of the first song to show")
+	likedFlags.register(likedCmd, "songs")
 	rootCmd.AddCommand(likedCmd)
 }

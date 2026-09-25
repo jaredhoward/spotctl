@@ -2,12 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
 
-var callMethod string
+var (
+	callMethod string
+	callRaw    bool
+)
 
 var callCmd = &cobra.Command{
 	Use:   "call <path> [body]",
@@ -26,7 +30,10 @@ doesn't have a dedicated command for.
 [body], if given, is sent as the raw request body with
 Content-Type: application/json. The response status and body are always
 printed, even on a non-2xx response, so you can see exactly what the API
-said.`,
+said.
+
+With --raw, only the response body goes to stdout and the status line goes
+to stderr, so the body can be piped straight into a tool like jq.`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runCall,
 }
@@ -48,7 +55,11 @@ func runCall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("call failed: %w", err)
 	}
 
-	fmt.Printf("Status: %d\n", status)
+	if callRaw {
+		fmt.Fprintf(os.Stderr, "Status: %d\n", status)
+	} else {
+		fmt.Printf("Status: %d\n", status)
+	}
 	if len(respBody) > 0 {
 		fmt.Println(string(respBody))
 	}
@@ -61,5 +72,6 @@ func runCall(cmd *cobra.Command, args []string) error {
 
 func init() {
 	callCmd.Flags().StringVarP(&callMethod, "method", "X", "GET", "HTTP method (GET, PUT, POST, DELETE, ...)")
+	callCmd.Flags().BoolVar(&callRaw, "raw", false, "print only the response body on stdout (status goes to stderr), for piping")
 	rootCmd.AddCommand(callCmd)
 }

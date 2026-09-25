@@ -127,3 +127,59 @@ func TestCallCmdRunE_ClientError(t *testing.T) {
 		t.Fatal("expected error for missing config")
 	}
 }
+
+func TestCallCmdRunE_RawSplitsStatusFromBody(t *testing.T) {
+	oldConfigPath := configPath
+	oldCallMethod, oldCallRaw := callMethod, callRaw
+	defer func() {
+		configPath = oldConfigPath
+		callMethod, callRaw = oldCallMethod, oldCallRaw
+	}()
+	callMethod, callRaw = "GET", true
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":"me"}`))
+	}))
+	defer srv.Close()
+	wireClient(t, srv)
+
+	stdout, stderr := captureBoth(t, func() {
+		if err := callCmd.RunE(callCmd, []string{"/v1/me"}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	if strings.TrimSpace(stdout) != `{"id":"me"}` {
+		t.Errorf("stdout should be only the body, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "Status: 200") {
+		t.Errorf("expected the status on stderr, got %q", stderr)
+	}
+}
+
+func TestCallCmdRunE_RawStillFailsOnNon2xx(t *testing.T) {
+	oldConfigPath := configPath
+	oldCallMethod, oldCallRaw := callMethod, callRaw
+	defer func() {
+		configPath = oldConfigPath
+		callMethod, callRaw = oldCallMethod, oldCallRaw
+	}()
+	callMethod, callRaw = "GET", true
+	configPath = writeTempConfig(t, &config.Config{ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"nope"}`))
+	}))
+	defer srv.Close()
+	wireClient(t, srv)
+
+	var err error
+	stdout, stderr := captureBoth(t, func() { err = callCmd.RunE(callCmd, []string{"/v1/me"}) })
+	if err == nil {
+		t.Fatal("expected a non-2xx status to remain an error with --raw")
+	}
+	if !strings.Contains(stdout, `{"error":"nope"}`) || !strings.Contains(stderr, "Status: 403") {
+		t.Errorf("body should be on stdout and status on stderr; got stdout=%q stderr=%q", stdout, stderr)
+	}
+}
