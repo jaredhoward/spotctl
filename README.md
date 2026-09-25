@@ -109,6 +109,9 @@ device_names:
 | `spotctl devices` | List available Spotify Connect devices |
 | `spotctl status` | Show current Spotify playback status |
 | `spotctl recent` | Show recently played tracks |
+| `spotctl playlists` | List the playlists in your library (owned and followed) |
+| `spotctl playlist <id\|uri\|url>` | Show the items in a playlist |
+| `spotctl liked` | Show your Liked Songs |
 | `spotctl setup` | Interactive setup and OAuth flow |
 | `spotctl version` | Print the version |
 | `spotctl call <path> [body]` | Call an arbitrary Spotify Web API endpoint directly, bypassing all of spotctl's action/confirm logic |
@@ -155,6 +158,20 @@ spotctl recent --config ./config.yaml
 spotctl recent --limit 5 --config ./config.yaml
 spotctl recent --after "2026-08-04T03:10:08-06:00" --config ./config.yaml
 spotctl recent --before "2026-08-04T05:00:00-06:00" --config ./config.yaml
+```
+
+Playlists:
+```bash
+spotctl playlists --config ./config.yaml
+spotctl playlists --limit 50 --offset 50 --config ./config.yaml
+spotctl playlist 37i9dQZF1DXcBWIGoYBM5M --config ./config.yaml
+spotctl playlist spotify:playlist:37i9dQZF1DXcBWIGoYBM5M --limit 50 --config ./config.yaml
+```
+
+Liked Songs:
+```bash
+spotctl liked --config ./config.yaml
+spotctl liked --limit 50 --offset 50 --config ./config.yaml
 ```
 
 Raw API access (bypasses confirmation/polling entirely — useful for debugging, or hitting an endpoint spotctl doesn't wrap):
@@ -474,6 +491,37 @@ Only one of `--uri`, `--playlist`, `--track`, `--album`, or `--artist` may be sp
 
 Output is newest-first, same as Spotify returns it — so with `--after`, the *last* line printed is the first track played after that time.
 
+### `playlists`
+
+| Flag | Default | Description |
+|---|---|---|
+| `--limit <1-50>` | `20` | Number of playlists to show |
+| `--offset <n>` | `0` | Index of the first playlist to show |
+
+Lists your whole library — playlists you own *and* ones you follow from other people (compare the owner column) — printing name, owner, item count, and the `spotify:playlist:` URI for each. Followed playlists are listed but their items aren't readable; see [`playlist`](#playlist). When more remain, a `Showing 1–20 of 57. Use --offset 20 for more.` line is printed to stderr (so piped stdout stays clean).
+
+### `playlist`
+
+Takes one argument: a playlist ID, a `spotify:playlist:<id>` URI, or an `open.spotify.com/playlist/<id>` link (the URIs printed by `spotctl playlists` and `spotctl recent` work as-is).
+
+| Flag | Default | Description |
+|---|---|---|
+| `--limit <1-50>` | `20` | Number of items to show |
+| `--offset <n>` | `0` | Index of the first item to show |
+
+Prints each item's position, name, artists, and track URI. Spotify only returns items for playlists you **own or collaborate on** — anything else (including Spotify's editorial playlists) is a `403`. Items Spotify returns as unavailable print as `(unavailable)`.
+
+Both playlist commands require the `playlist-read-private` scope. If you set up spotctl before these commands existed, your refresh token doesn't have it (a refresh token keeps the scopes it was issued with) — re-run `spotctl setup` and you'll get a `403` with a hint until you do.
+
+### `liked`
+
+| Flag | Default | Description |
+|---|---|---|
+| `--limit <1-50>` | `20` | Number of songs to show |
+| `--offset <n>` | `0` | Index of the first song to show |
+
+Prints your Liked Songs (saved tracks), most recently liked first, in the same format as `playlist`. Liked Songs is not a playlist in Spotify's API, so it never appears in `spotctl playlists` and can't be read with `spotctl playlist`. Requires the `user-library-read` scope — re-run `spotctl setup` if you get a `403`.
+
 ### `call`
 
 | Flag | Description |
@@ -507,6 +555,8 @@ spotctl setup --config ./config.yaml
 ```
 
 Existing sets and device names will be preserved and credentials pre-filled for easy updating.
+
+Re-running setup is also how you pick up newly required Spotify scopes (`playlist-read-private` for `spotctl playlists` / `spotctl playlist`, `user-library-read` for `spotctl liked`) — a refresh token keeps the scopes it was originally issued with.
 
 ## Home Assistant Integration
 
