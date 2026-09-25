@@ -179,7 +179,7 @@ spotctl liked --all --json --config ./config.yaml
 Raw API access (bypasses confirmation/polling entirely — useful for debugging, or hitting an endpoint spotctl doesn't wrap):
 ```bash
 spotctl call /v1/me/player
-spotctl call --raw /v1/me/player | jq .device.name
+spotctl call /v1/me/player | jq .device.name
 spotctl call -X PUT '/v1/me/player/play?device_id=DEVICE_ID' '{"context_uri":"spotify:playlist:PLAYLIST_ID"}'
 ```
 
@@ -551,9 +551,10 @@ spotctl liked --all --json | jq -r '.[] | "\(.artists[0]) - \(.name)"'
 | `<path>` | Required. Resolved against `https://api.spotify.com`, e.g. `/v1/me/player/play?device_id=xxx` |
 | `[body]` | Optional raw request body, sent with `Content-Type: application/json` |
 | `--method`, `-X` | HTTP method (default `GET`) |
-| `--raw` | Print only the response body on stdout and the status line on stderr, so the body pipes cleanly into `jq` |
 
-Always prints `Status: <code>` plus the raw response body, even on a non-2xx response, so you can see exactly what the API said. Exits non-zero on a non-2xx status.
+The response body goes to **stdout** and a `Status: <code>` line goes to **stderr**, so the body pipes straight into a tool like `jq`. Both are printed even on a non-2xx response, so you can see exactly what the API said. Exits non-zero on a non-2xx status.
+
+> **Changed in v1.1.0:** the `Status:` line used to be printed on stdout ahead of the body. If a script parsed it from stdout, read stderr instead (or use the exit code).
 
 ## `transfer` vs. `play` without a URI
 
