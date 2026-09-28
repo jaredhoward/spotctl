@@ -44,6 +44,7 @@ type Playlist struct {
 	Name          string            `json:"name"`
 	Owner         PlaylistOwner     `json:"owner"`
 	Collaborative bool              `json:"collaborative"`
+	Public        *bool             `json:"public"`
 	Items         *playlistItemsRef `json:"items"`
 }
 
