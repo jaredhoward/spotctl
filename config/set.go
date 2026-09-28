@@ -410,6 +410,40 @@ func (p *SetParam) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+// MarshalYAML writes the same short forms UnmarshalYAML accepts, so a saved
+// config matches the documented one instead of expanding every param into a
+// mapping: a pool-only param is written as a bare sequence, and a
+// default-only param as a bare scalar (a whole number or true/false stays
+// unquoted). Anything with Required set, or with both a pool and a default,
+// keeps the full mapping so no field is lost.
+func (p SetParam) MarshalYAML() (interface{}, error) {
+	switch {
+	case len(p.Pool) > 0 && p.Default == "" && !p.Required:
+		return p.Pool, nil
+	case len(p.Pool) == 0 && p.Default != "" && !p.Required:
+		return scalarDefault(p.Default), nil
+	}
+	type raw SetParam
+	return raw(p), nil
+}
+
+// scalarDefault picks the YAML scalar type used to write a default. Defaults
+// are stored as strings, so this only decides how the value looks in the
+// file: whole numbers and true/false are written bare, everything else as a
+// string. Both read back to the identical Default.
+func scalarDefault(s string) interface{} {
+	if n, err := strconv.Atoi(s); err == nil && strconv.Itoa(n) == s {
+		return n
+	}
+	switch s {
+	case "true":
+		return true
+	case "false":
+		return false
+	}
+	return s
+}
+
 // CommandParams holds all possible parameters for any action type.
 type CommandParams struct {
 	URI         string          `yaml:"uri,omitempty"`
