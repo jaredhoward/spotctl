@@ -224,3 +224,60 @@ func TestReadURILines_ReadError(t *testing.T) {
 		t.Fatalf("expected the read error, got %v", err)
 	}
 }
+
+func TestRunCreatePlaylist_Public(t *testing.T) {
+	resetCreatePlaylist(t)
+	cs := &createServer{}
+	serveCmdTest(t, cs.handlers(201, 201))
+	setFlag(t, createPlaylistCmd, "public", "true")
+
+	var runErr error
+	_, stderr := captureBoth(t, func() {
+		runErr = createPlaylistCmd.RunE(createPlaylistCmd, []string{"Chill: Test", trackA})
+	})
+	if runErr != nil {
+		t.Fatal(runErr)
+	}
+	if cs.created["public"] != true {
+		t.Errorf("expected public=true in the create body, got %#v", cs.created)
+	}
+	if !strings.Contains(stderr, "Created public playlist") {
+		t.Errorf("unexpected stderr %q", stderr)
+	}
+	if strings.Contains(stderr, "warning") {
+		t.Errorf("no warning expected when visibility matches, got %q", stderr)
+	}
+}
+
+func TestRunCreatePlaylist_DryRunShowsVisibility(t *testing.T) {
+	resetCreatePlaylist(t)
+	setFlag(t, createPlaylistCmd, "dry-run", "true")
+	setFlag(t, createPlaylistCmd, "public", "true")
+	stdout := captureOutput(t, func() {
+		if err := createPlaylistCmd.RunE(createPlaylistCmd, []string{"n", trackA}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(stdout, "Would create public playlist") {
+		t.Errorf("unexpected dry-run output %q", stdout)
+	}
+}
+
+func TestRunCreatePlaylist_WarnsWhenSpotifyIgnoresVisibility(t *testing.T) {
+	resetCreatePlaylist(t)
+	cs := &createServer{}
+	handlers := cs.handlers(201, 201)
+	handlers["POST /v1/me/playlists"] = jsonHandler(`{"id":"new1","uri":"spotify:playlist:new1","name":"Chill: Test","public":true}`)
+	serveCmdTest(t, handlers)
+
+	var runErr error
+	_, stderr := captureBoth(t, func() {
+		runErr = createPlaylistCmd.RunE(createPlaylistCmd, []string{"Chill: Test", trackA})
+	})
+	if runErr != nil {
+		t.Fatal(runErr)
+	}
+	if !strings.Contains(stderr, "warning: Spotify reports this playlist as public, not private") {
+		t.Errorf("expected a visibility warning, got %q", stderr)
+	}
+}

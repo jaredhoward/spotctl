@@ -30,10 +30,10 @@ func ParseTrackURI(s string) (string, error) {
 	return uri, nil
 }
 
-// CreatePlaylist creates an empty, private playlist owned by the current user.
-// Public playlists are deliberately not supported: spotctl only requests the
-// playlist-modify-private scope. description may be empty. Requires that scope.
-func (c *Client) CreatePlaylist(ctx context.Context, name, description string) (*Playlist, error) {
+// CreatePlaylist creates an empty playlist owned by the current user, private
+// unless public is set. description may be empty. Requires the
+// playlist-modify-private scope (playlist-modify-public for a public one).
+func (c *Client) CreatePlaylist(ctx context.Context, name, description string, public bool) (*Playlist, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, fmt.Errorf("playlist name must not be empty")
@@ -41,7 +41,7 @@ func (c *Client) CreatePlaylist(ctx context.Context, name, description string) (
 	if n := utf8.RuneCountInString(description); n > MaxPlaylistDescription {
 		return nil, fmt.Errorf("description is %d characters; Spotify allows at most %d", n, MaxPlaylistDescription)
 	}
-	body := map[string]any{"name": name, "public": false}
+	body := map[string]any{"name": name, "public": public}
 	if description != "" {
 		body["description"] = description
 	}

@@ -112,7 +112,8 @@ device_names:
 | `spotctl playlists` | List the playlists in your library (owned and followed) |
 | `spotctl playlist <id\|uri\|url>` | Show the items in a playlist |
 | `spotctl liked` | Show your Liked Songs |
-| `spotctl create-playlist <name> [track-uri...]` | Create a new private playlist and fill it with tracks |
+| `spotctl create-playlist <name> [track-uri...]` | Create a new playlist and fill it with tracks |
+| `spotctl add-to-playlist <playlist> [track-uri...]` | Append tracks to an existing playlist |
 | `spotctl setup` | Interactive setup and OAuth flow |
 | `spotctl version` | Print the version |
 | `spotctl call <path> [body]` | Call an arbitrary Spotify Web API endpoint directly, bypassing all of spotctl's action/confirm logic |
@@ -541,9 +542,10 @@ Takes a playlist name and, optionally, `spotify:track:<id>` URIs (the ones `spot
 |---|---|---|
 | `--description <text>` | none | Playlist description (Spotify allows at most 300 characters) |
 | `--from-file <path>` | none | Read track URIs from a file, one per line; blank lines and lines starting with `#` are ignored. `-` reads standard input |
+| `--public` | off | Make the playlist public. It is private by default |
 | `--dry-run` | off | Validate the input and print what would be created, without contacting Spotify |
 
-Creates a **new, private** playlist and adds the tracks in the order given (arguments first, then the file), 100 per API call. It never touches an existing playlist, and there is no option to make the result public. A URI listed more than once is added once, with a note on stderr. At least one track is required. On success the new playlist's `spotify:playlist:` URI is the only thing printed to stdout, so it can be captured by a script.
+Creates a **new** playlist, private unless you pass `--public`, and adds the tracks in the order given (arguments first, then the file), 100 per API call. It never touches an existing playlist (see [`add-to-playlist`](#add-to-playlist) for that). A URI listed more than once is added once, with a note on stderr. After creating, it checks the visibility Spotify reports and prints a warning on stderr if it differs from what you asked for. At least one track is required. On success the new playlist's `spotify:playlist:` URI is the only thing printed to stdout, so it can be captured by a script.
 
 ```bash
 spotctl playlist --all --json | jq -r '.[] | select(.artists[0] == "Novo Amor") | .uri' > tracks.txt
@@ -551,7 +553,26 @@ spotctl create-playlist "Chill: Test" --description "Quiet songs." --from-file t
 spotctl create-playlist "Chill: Test" --description "Quiet songs." --from-file tracks.txt
 ```
 
-If the playlist is created but adding tracks fails part-way, the error names the new playlist's URI so you can finish or delete it in Spotify. Requires the `playlist-modify-private` scope: re-run `spotctl setup` if you get a `403`.
+If the playlist is created but adding tracks fails part-way, the error names the new playlist's URI so you can finish or delete it in Spotify. Requires the `playlist-modify-private` scope (`playlist-modify-public` for `--public`): re-run `spotctl setup` if you get a `403`.
+
+### `add-to-playlist`
+
+Takes a playlist (an ID, a `spotify:playlist:<id>` URI, or an `open.spotify.com/playlist/<id>` link) and, optionally, `spotify:track:<id>` URIs.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--from-file <path>` | none | Read track URIs from a file, one per line; blank lines and lines starting with `#` are ignored. `-` reads standard input |
+| `--allow-duplicates` | off | Add tracks even if they are already in the playlist, and skip the duplicate check |
+| `--dry-run` | off | Check for duplicates and print what would be added, without changing the playlist |
+
+Appends the tracks to the end of a playlist you own or collaborate on, 100 per API call. It only ever appends: nothing is removed or reordered. By default it first reads the playlist and skips tracks already in it, matching by track URI, so a remaster or other release of the same song counts as a different track. Skipped tracks are reported on stderr; if nothing is left, nothing is sent. `--dry-run` still makes the read-only duplicate check (and needs a valid login), but not with `--allow-duplicates`, which makes it contact nothing.
+
+```bash
+spotctl add-to-playlist spotify:playlist:<id> --from-file tracks.txt --dry-run
+spotctl add-to-playlist spotify:playlist:<id> --from-file tracks.txt
+```
+
+Spotify only allows changes to playlists you own or collaborate on, so a followed playlist returns a `403`. Changing a private playlist needs the `playlist-modify-private` scope and a public one needs `playlist-modify-public`; re-run `spotctl setup` if you get a `403` on one of yours. If a large add fails part-way, the error says so and earlier batches stay added; re-running the same command skips them.
 
 ### List output and `--json`
 
@@ -601,7 +622,7 @@ spotctl setup --config ./config.yaml
 
 Existing sets and device names will be preserved and credentials pre-filled for easy updating.
 
-Re-running setup is also how you pick up newly required Spotify scopes (`playlist-read-private` for `spotctl playlists` / `spotctl playlist`, `user-library-read` for `spotctl liked`, `playlist-modify-private` for `spotctl create-playlist`) — a refresh token keeps the scopes it was originally issued with.
+Re-running setup is also how you pick up newly required Spotify scopes (`playlist-read-private` for `spotctl playlists` / `spotctl playlist`, `user-library-read` for `spotctl liked`, `playlist-modify-private` and `playlist-modify-public` for `spotctl create-playlist` / `spotctl add-to-playlist`) — a refresh token keeps the scopes it was originally issued with.
 
 ## Home Assistant Integration
 

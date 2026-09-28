@@ -55,12 +55,28 @@ func TestCreatePlaylistSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	pl, err := newPlaylistTestClient(srv).CreatePlaylist(context.Background(), "  Chill: Test ", "desc")
+	pl, err := newPlaylistTestClient(srv).CreatePlaylist(context.Background(), "  Chill: Test ", "desc", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if pl.ID != "new1" || pl.URI != "spotify:playlist:new1" {
 		t.Fatalf("unexpected playlist %#v", pl)
+	}
+}
+
+func TestCreatePlaylistPublic(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["public"] != true {
+			t.Errorf("expected public=true, got %#v", body)
+		}
+		w.Write([]byte(`{"id":"x","uri":"spotify:playlist:x","name":"n"}`))
+	}))
+	defer srv.Close()
+
+	if _, err := newPlaylistTestClient(srv).CreatePlaylist(context.Background(), "n", "", true); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -75,23 +91,23 @@ func TestCreatePlaylistOmitsEmptyDescription(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := newPlaylistTestClient(srv).CreatePlaylist(context.Background(), "n", ""); err != nil {
+	if _, err := newPlaylistTestClient(srv).CreatePlaylist(context.Background(), "n", "", false); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestCreatePlaylistValidation(t *testing.T) {
 	c := &Client{accessToken: "t", httpClient: http.DefaultClient, apiBase: "http://127.0.0.1:0"}
-	if _, err := c.CreatePlaylist(context.Background(), "   ", ""); err == nil || !strings.Contains(err.Error(), "name") {
+	if _, err := c.CreatePlaylist(context.Background(), "   ", "", false); err == nil || !strings.Contains(err.Error(), "name") {
 		t.Errorf("expected name error, got %v", err)
 	}
 	long := strings.Repeat("é", MaxPlaylistDescription+1)
-	if _, err := c.CreatePlaylist(context.Background(), "n", long); err == nil || !strings.Contains(err.Error(), "301") {
+	if _, err := c.CreatePlaylist(context.Background(), "n", long, false); err == nil || !strings.Contains(err.Error(), "301") {
 		t.Errorf("expected description length error, got %v", err)
 	}
 	// Exactly at the limit (counted in characters, not bytes) is fine to send.
 	atLimit := strings.Repeat("é", MaxPlaylistDescription)
-	if _, err := c.CreatePlaylist(context.Background(), "n", atLimit); err == nil || strings.Contains(err.Error(), "allows at most") {
+	if _, err := c.CreatePlaylist(context.Background(), "n", atLimit, false); err == nil || strings.Contains(err.Error(), "allows at most") {
 		t.Errorf("300-character description should pass validation and fail only on the connection, got %v", err)
 	}
 }
@@ -113,7 +129,7 @@ func TestCreatePlaylistErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
-			_, err := newPlaylistTestClient(srv).CreatePlaylist(context.Background(), "n", "")
+			_, err := newPlaylistTestClient(srv).CreatePlaylist(context.Background(), "n", "", false)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("expected error containing %q, got %v", tc.want, err)
 			}
@@ -131,7 +147,7 @@ func TestCreatePlaylistTransportError(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	c := newPlaylistTestClient(srv)
 	srv.Close()
-	if _, err := c.CreatePlaylist(context.Background(), "n", ""); err == nil || !strings.Contains(err.Error(), "create playlist request failed") {
+	if _, err := c.CreatePlaylist(context.Background(), "n", "", false); err == nil || !strings.Contains(err.Error(), "create playlist request failed") {
 		t.Fatalf("expected transport error, got %v", err)
 	}
 }

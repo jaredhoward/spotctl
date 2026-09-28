@@ -16,26 +16,28 @@ var (
 	createPlaylistDescription string
 	createPlaylistFromFile    string
 	createPlaylistDryRun      bool
+	createPlaylistPublic      bool
 )
 
 var createPlaylistCmd = &cobra.Command{
 	Use:   "create-playlist <name> [track-uri...]",
-	Short: "Create a new private playlist and fill it with tracks",
-	Long: `Create a new private playlist and add tracks to it, in the order given.
+	Short: "Create a new playlist and fill it with tracks",
+	Long: `Create a new playlist and add tracks to it, in the order given. The
+playlist is private unless you pass --public.
 
 Tracks are spotify:track:<id> URIs, given as arguments and/or read from a
 file with --from-file (one URI per line; blank lines and lines starting with
 # are ignored; "-" reads standard input). A URI listed more than once is added
 once. At least one track is required.
 
-This only ever creates a new playlist; it never touches an existing one. The
-playlist is always private. Use --dry-run to validate the input and see what
+This only ever creates a new playlist; to add to an existing one, use
+'spotctl add-to-playlist'. Use --dry-run to validate the input and see what
 would be created without contacting Spotify.`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runCreatePlaylist,
 }
 
-const createPlaylistHint = "run 'spotctl setup' to grant playlist-modify-private access if you haven't since upgrading"
+const createPlaylistHint = "run 'spotctl setup' to grant playlist-modify access if you haven't since upgrading"
 
 func runCreatePlaylist(cmd *cobra.Command, args []string) error {
 	name := strings.TrimSpace(args[0])
@@ -43,27 +45,13 @@ func runCreatePlaylist(cmd *cobra.Command, args []string) error {
 		return errors.New("playlist name must not be empty")
 	}
 
-	raw := append([]string(nil), args[1:]...)
-	if createPlaylistFromFile != "" {
-		fromFile, err := readURILines(cmd.InOrStdin(), createPlaylistFromFile)
-		if err != nil {
-			return err
-		}
-		raw = append(raw, fromFile...)
-	}
-	uris, dupes, err := cleanTrackURIs(raw)
+	uris, err := collectTrackURIs(cmd, args[1:], createPlaylistFromFile)
 	if err != nil {
 		return err
 	}
-	if len(uris) == 0 {
-		return errors.New("no tracks given: pass spotify:track:<id> URIs as arguments or with --from-file")
-	}
-	if dupes > 0 {
-		fmt.Fprintf(os.Stderr, "note: skipped %d repeated track URI(s)\n", dupes)
-	}
 
 	if createPlaylistDryRun {
-		fmt.Printf("Would create private playlist %q with %d track(s).\n", name, len(uris))
+		fmt.Printf("Would create %s playlist %q with %d track(s).\n", visibility(createPlaylistPublic), name, len(uris))
 		if createPlaylistDescription != "" {
 			fmt.Printf("Description: %s\n", createPlaylistDescription)
 		}
@@ -76,7 +64,7 @@ func runCreatePlaylist(cmd *cobra.Command, args []string) error {
 	}
 	ctx := spotify.WithReason(cmdCtx(cmd), "Requested Command")
 
-	pl, err := client.CreatePlaylist(ctx, name, createPlaylistDescription)
+	pl, err := client.CreatePlaylist(ctx, name, createPlaylistDescription, createPlaylistPublic)
 	if err != nil {
 		return fmt.Errorf("failed to create playlist: %w", accessHint(err, createPlaylistHint))
 	}
@@ -85,9 +73,45 @@ func runCreatePlaylist(cmd *cobra.Command, args []string) error {
 			pl.Name, pl.URI, accessHint(err, createPlaylistHint))
 	}
 
-	fmt.Fprintf(os.Stderr, "Created private playlist %q with %d track(s).\n", pl.Name, len(uris))
+	fmt.Fprintf(os.Stderr, "Created %s playlist %q with %d track(s).\n", visibility(createPlaylistPublic), pl.Name, len(uris))
+	if pl.Public != nil && *pl.Public != createPlaylistPublic {
+		fmt.Fprintf(os.Stderr, "warning: Spotify reports this playlist as %s, not %s as requested; check it in the Spotify app\n",
+			visibility(*pl.Public), visibility(createPlaylistPublic))
+	}
 	fmt.Println(pl.URI)
 	return nil
+}
+
+func visibility(public bool) string {
+	if public {
+		return "public"
+	}
+	return "private"
+}
+
+// collectTrackURIs gathers track URIs from args and, if fromFile is set, from
+// that file ("-" for stdin), validating each and dropping repeats. It returns
+// an error if none remain, and notes dropped repeats on stderr.
+func collectTrackURIs(cmd *cobra.Command, args []string, fromFile string) ([]string, error) {
+	raw := append([]string(nil), args...)
+	if fromFile != "" {
+		lines, err := readURILines(cmd.InOrStdin(), fromFile)
+		if err != nil {
+			return nil, err
+		}
+		raw = append(raw, lines...)
+	}
+	uris, dupes, err := cleanTrackURIs(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(uris) == 0 {
+		return nil, errors.New("no tracks given: pass spotify:track:<id> URIs as arguments or with --from-file")
+	}
+	if dupes > 0 {
+		fmt.Fprintf(os.Stderr, "note: skipped %d repeated track URI(s)\n", dupes)
+	}
+	return uris, nil
 }
 
 // readURILines reads one value per line from path ("-" means stdin), skipping
@@ -139,6 +163,7 @@ func cleanTrackURIs(raw []string) (uris []string, dupes int, err error) {
 func init() {
 	createPlaylistCmd.Flags().StringVar(&createPlaylistDescription, "description", "", "playlist description (max 300 characters)")
 	createPlaylistCmd.Flags().StringVar(&createPlaylistFromFile, "from-file", "", "read track URIs from a file, one per line (\"-\" for stdin)")
+	createPlaylistCmd.Flags().BoolVar(&createPlaylistPublic, "public", false, "make the playlist public (default: private)")
 	createPlaylistCmd.Flags().BoolVar(&createPlaylistDryRun, "dry-run", false, "validate and show what would be created, without contacting Spotify")
 	rootCmd.AddCommand(createPlaylistCmd)
 }
