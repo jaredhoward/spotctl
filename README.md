@@ -189,6 +189,8 @@ spotctl call -X PUT '/v1/me/player/play?device_id=DEVICE_ID' '{"context_uri":"sp
 
 Sets are optional — if you just want manual playback control, the commands above are all you need. A set is a named, reusable routine (e.g. "play this playlist, shuffle, set the volume") that can be as simple as a single play command or as complex as a multi-step routine with confirmation and error handling. Trigger one with `spotctl run <name>` or from an automation; list all configured sets with `spotctl sets`.
 
+> **spotctl rewrites `config.yaml` when it saves it**: during `setup`, when `devices --update` records device names, and when Spotify rotates your refresh token. The file is regenerated from its parsed contents, so comments and hand formatting are not preserved. Params are written back in the short forms shown below (a bare list for `pool`, a bare value such as `volume: 40`). Files saved by earlier versions used an expanded form (`pool:` containing `pool:`, `volume:` containing `default:`); those still load and are tidied the next time spotctl saves.
+
 ```yaml
 sets:
   evening_playlist:
