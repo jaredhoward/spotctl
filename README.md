@@ -112,6 +112,7 @@ device_names:
 | `spotctl playlists` | List the playlists in your library (owned and followed) |
 | `spotctl playlist <id\|uri\|url>` | Show the items in a playlist |
 | `spotctl liked` | Show your Liked Songs |
+| `spotctl create-playlist <name> [track-uri...]` | Create a new private playlist and fill it with tracks |
 | `spotctl setup` | Interactive setup and OAuth flow |
 | `spotctl version` | Print the version |
 | `spotctl call <path> [body]` | Call an arbitrary Spotify Web API endpoint directly, bypassing all of spotctl's action/confirm logic |
@@ -532,6 +533,26 @@ Both playlist commands require the `playlist-read-private` scope. If you set up 
 
 Prints your Liked Songs (saved tracks), most recently liked first, in the same format as `playlist`. Liked Songs is not a playlist in Spotify's API, so it never appears in `spotctl playlists` and can't be read with `spotctl playlist`. Requires the `user-library-read` scope — re-run `spotctl setup` if you get a `403`.
 
+### `create-playlist`
+
+Takes a playlist name and, optionally, `spotify:track:<id>` URIs (the ones `spotctl playlist --json` and `spotctl liked --json` print in their `uri` field).
+
+| Flag | Default | Description |
+|---|---|---|
+| `--description <text>` | none | Playlist description (Spotify allows at most 300 characters) |
+| `--from-file <path>` | none | Read track URIs from a file, one per line; blank lines and lines starting with `#` are ignored. `-` reads standard input |
+| `--dry-run` | off | Validate the input and print what would be created, without contacting Spotify |
+
+Creates a **new, private** playlist and adds the tracks in the order given (arguments first, then the file), 100 per API call. It never touches an existing playlist, and there is no option to make the result public. A URI listed more than once is added once, with a note on stderr. At least one track is required. On success the new playlist's `spotify:playlist:` URI is the only thing printed to stdout, so it can be captured by a script.
+
+```bash
+spotctl playlist --all --json | jq -r '.[] | select(.artists[0] == "Novo Amor") | .uri' > tracks.txt
+spotctl create-playlist "Chill: Test" --description "Quiet songs." --from-file tracks.txt --dry-run
+spotctl create-playlist "Chill: Test" --description "Quiet songs." --from-file tracks.txt
+```
+
+If the playlist is created but adding tracks fails part-way, the error names the new playlist's URI so you can finish or delete it in Spotify. Requires the `playlist-modify-private` scope: re-run `spotctl setup` if you get a `403`.
+
 ### List output and `--json`
 
 `playlists`, `playlist`, and `liked` share their paging and output flags. Without `--all`, a page is shown and a `Showing 1–20 of 57. Use --offset 20 for more (or --all).` hint goes to **stderr**, so piped stdout stays clean. With `--json`, stdout is a JSON array (an empty list prints `[]`) that you can pipe to `jq`:
@@ -580,7 +601,7 @@ spotctl setup --config ./config.yaml
 
 Existing sets and device names will be preserved and credentials pre-filled for easy updating.
 
-Re-running setup is also how you pick up newly required Spotify scopes (`playlist-read-private` for `spotctl playlists` / `spotctl playlist`, `user-library-read` for `spotctl liked`) — a refresh token keeps the scopes it was originally issued with.
+Re-running setup is also how you pick up newly required Spotify scopes (`playlist-read-private` for `spotctl playlists` / `spotctl playlist`, `user-library-read` for `spotctl liked`, `playlist-modify-private` for `spotctl create-playlist`) — a refresh token keeps the scopes it was originally issued with.
 
 ## Home Assistant Integration
 
